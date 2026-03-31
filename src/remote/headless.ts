@@ -5,6 +5,7 @@ import { ContextManager } from '../engine/contextManager.js'
 import { QueryEngine } from '../engine/queryEngine.js'
 import { RemoteServer } from './server.js'
 import { registerAllTools } from '../tools/registerAll.js'
+import { setGlobalEngine } from '../repl.js'
 import { theme } from '../ui/theme.js'
 import { randomUUID } from 'crypto'
 
@@ -25,7 +26,15 @@ export async function startHeadless(port: number): Promise<void> {
     tokenCounter,
     contextManager,
     headless: true,
+    permissionConfig: {
+      mode: 'auto-approve',
+      rules: [],
+      alwaysAllow: new Set(),
+    },
   })
+
+  // Set global engine so sub-agents work in headless mode
+  setGlobalEngine(engine)
 
   const secret = config.remoteSecret || randomUUID()
   const server = new RemoteServer(engine, tokenCounter, secret, config.remoteSecret)

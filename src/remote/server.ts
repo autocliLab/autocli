@@ -109,9 +109,17 @@ export class RemoteServer {
                   .map(b => b.text)
                   .join('\n')
 
+            // Include tool usage info for transparency
+            const toolCalls = typeof response.content === 'string'
+              ? []
+              : response.content
+                  .filter(b => b.type === 'tool_use')
+                  .map(b => ({ name: (b as { name: string }).name, id: (b as { id: string }).id }))
+
             return Response.json({
               sessionId,
               response: textContent,
+              toolCalls,
               usage: {
                 input: self.tokenCounter.totalInput,
                 output: self.tokenCounter.totalOutput,

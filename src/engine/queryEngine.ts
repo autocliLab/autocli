@@ -6,7 +6,6 @@ import type { ToolContext, ToolResult } from '../tools/types.js'
 import type { Message, ContentBlock } from '../commands/types.js'
 import { PermissionGate } from '../permissions/permissionGate.js'
 import type { PermissionConfig } from '../permissions/types.js'
-import { StreamRenderer } from '../ui/stream.js'
 import { Spinner } from '../ui/spinner.js'
 import { renderMarkdown } from '../ui/markdown.js'
 import { formatToolUse, formatToolResult } from '../ui/toolResult.js'
@@ -16,6 +15,7 @@ export interface QueryEngineConfig {
   apiKey: string
   model: string
   maxTokens?: number
+  maxToolLoops?: number
   toolRegistry: ToolRegistry
   tokenCounter: TokenCounter
   contextManager: ContextManager
@@ -60,26 +60,58 @@ export class QueryEngine {
     const toolContext: ToolContext = { workingDir }
 
     const spinner = new Spinner('Thinking...')
-    const stream = new StreamRenderer()
+    const maxLoops = this.config.maxToolLoops || 40
+    let loopCount = 0
 
     let currentMessages = [...fitted]
     let continueLoop = true
 
     while (continueLoop) {
       continueLoop = false
+      loopCount++
+
+      if (loopCount > maxLoops) {
+        if (!this.config.headless) {
+          console.log(theme.warning(`Tool loop limit reached (${maxLoops}). Stopping.`))
+        }
+        break
+      }
 
       if (!this.config.headless) spinner.start()
 
-      const apiMessages = currentMessages.map(m => ({
-        role: m.role as 'user' | 'assistant',
-        content: m.content,
-      }))
+      // Convert internal messages to Anthropic API format
+      const apiMessages: Anthropic.MessageParam[] = currentMessages.map(m => {
+        if (typeof m.content === 'string') {
+          return { role: m.role as 'user' | 'assistant', content: m.content }
+        }
+        // Map ContentBlock[] to Anthropic-compatible blocks
+        const blocks = m.content.map(block => {
+          if (block.type === 'tool_result') {
+            return {
+              type: 'tool_result' as const,
+              tool_use_id: block.tool_use_id,
+              content: block.content,
+              is_error: block.is_error,
+            }
+          }
+          if (block.type === 'tool_use') {
+            return {
+              type: 'tool_use' as const,
+              id: block.id,
+              name: block.name,
+              input: block.input,
+            }
+          }
+          return { type: 'text' as const, text: block.text }
+        })
+        return { role: m.role as 'user' | 'assistant', content: blocks }
+      })
 
       const response = await this.client.messages.create({
         model: this.config.model,
         max_tokens: this.config.maxTokens || 8192,
         system: systemPrompt,
-        messages: apiMessages as Anthropic.MessageParam[],
+        messages: apiMessages,
         tools: tools as Anthropic.Tool[],
       })
 
@@ -132,7 +164,12 @@ export class QueryEngine {
           }
 
           if (!this.config.headless) spinner.start()
-          const result = await tool.call(toolInput, toolContext)
+          let result: ToolResult
+          try {
+            result = await tool.call(toolInput, toolContext)
+          } catch (err) {
+            result = { output: `Tool crashed: ${(err as Error).message}`, isError: true }
+          }
           if (!this.config.headless) {
             spinner.stop()
             console.log(formatToolResult(toolName, result.output, result.isError))

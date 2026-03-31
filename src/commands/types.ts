@@ -1,8 +1,13 @@
+export type CommandResult =
+  | { type: 'output'; text: string }
+  | { type: 'prompt'; prompt: string }
+  | { type: 'compact' }
+
 export interface CommandDefinition {
   name: string
   description: string
   aliases?: string[]
-  run(args: string[], context: CommandContext): Promise<string>
+  run(args: string[], context: CommandContext): Promise<string | CommandResult>
 }
 
 export interface CommandContext {

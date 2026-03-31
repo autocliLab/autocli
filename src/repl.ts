@@ -18,13 +18,16 @@ import { costCommand } from './commands/cost.js'
 import { diffCommand } from './commands/diff.js'
 import { commitCommand } from './commands/commit.js'
 import { compactCommand } from './commands/compact.js'
-import type { Message } from './commands/types.js'
+import type { Message, CommandResult } from './commands/types.js'
 import type { HookEvent } from './hooks/types.js'
 import { join } from 'path'
 
 let globalEngine: QueryEngine | null = null
 export function getGlobalEngine(): QueryEngine | null {
   return globalEngine
+}
+export function setGlobalEngine(engine: QueryEngine): void {
+  globalEngine = engine
 }
 
 export async function startRepl(options: {
@@ -128,16 +131,20 @@ export async function startRepl(options: {
         totalTokens: { input: tokenCounter.totalInput, output: tokenCounter.totalOutput },
       })
 
-      // Handle special command responses
-      if (result.startsWith('__PROMPT__:')) {
-        const prompt = result.slice('__PROMPT__:'.length)
-        messages.push({ role: 'user', content: prompt })
-      } else if (result.startsWith('__COMPACT__:')) {
+      // Handle typed or string command results
+      if (typeof result === 'string') {
+        console.log(result)
+        continue
+      }
+
+      if (result.type === 'prompt') {
+        messages.push({ role: 'user', content: result.prompt })
+      } else if (result.type === 'compact') {
         messages = contextManager.fitToContext(messages)
         console.log(theme.success(`Context compacted to ${messages.length} messages`))
         continue
       } else {
-        console.log(result)
+        console.log(result.text)
         continue
       }
     } else {
