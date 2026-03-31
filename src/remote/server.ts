@@ -1,7 +1,7 @@
 import { RemoteAuth } from './auth.js'
 import { getServerStatus } from './status.js'
 import type { TokenCounter } from '../engine/tokenCounter.js'
-import type { QueryEngine } from '../engine/queryEngine.js'
+import { QueryEngine, type QueryEngineConfig } from '../engine/queryEngine.js'
 import type { Message } from '../commands/types.js'
 import { theme } from '../ui/theme.js'
 
@@ -17,6 +17,7 @@ export class RemoteServer {
   private startTime = Date.now()
   private server: ReturnType<typeof Bun.serve> | null = null
   private engine: QueryEngine
+  private engineConfig: QueryEngineConfig
   private tokenCounter: TokenCounter
   private pendingApprovals = new Map<string, {
     resolve: (approved: boolean) => void
@@ -26,11 +27,13 @@ export class RemoteServer {
 
   constructor(
     engine: QueryEngine,
+    engineConfig: QueryEngineConfig,
     tokenCounter: TokenCounter,
     secret: string,
     apiKey?: string,
   ) {
     this.engine = engine
+    this.engineConfig = engineConfig
     this.tokenCounter = tokenCounter
     this.auth = new RemoteAuth(secret, apiKey)
   }
@@ -149,7 +152,14 @@ export class RemoteServer {
                 }
 
                 try {
-                  const { messages } = await self.engine.run(
+                  // Create engine with SSE callbacks for real-time streaming
+                  const streamEngine = new QueryEngine({
+                    ...self.engineConfig,
+                    onText: (text: string) => sendEvent('text', { text }),
+                    onToolUse: (name: string, input: Record<string, unknown>) => sendEvent('tool_use', { name, input }),
+                    onToolResult: (name: string, result) => sendEvent('tool_result', { name, output: result.output, isError: result.isError }),
+                  })
+                  const { messages } = await streamEngine.run(
                     session!.messages,
                     body.workingDir || process.cwd(),
                   )

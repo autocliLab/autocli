@@ -19,7 +19,7 @@ export async function startHeadless(port: number): Promise<void> {
   const tokenCounter = new TokenCounter(config.model)
   const contextManager = new ContextManager()
 
-  const engine = new QueryEngine({
+  const engineConfig = {
     apiKey,
     model: config.model,
     toolRegistry,
@@ -27,17 +27,19 @@ export async function startHeadless(port: number): Promise<void> {
     contextManager,
     headless: true,
     permissionConfig: {
-      mode: 'auto-approve',
-      rules: [],
-      alwaysAllow: new Set(),
+      mode: 'auto-approve' as const,
+      rules: [] as Array<{ tool: string; pattern?: string; decision: 'allow' | 'deny' | 'ask' }>,
+      alwaysAllow: new Set<string>(),
     },
-  })
+  }
+
+  const engine = new QueryEngine(engineConfig)
 
   // Set global engine so sub-agents work in headless mode
   setGlobalEngine(engine)
 
   const secret = config.remoteSecret || randomUUID()
-  const server = new RemoteServer(engine, tokenCounter, secret, config.remoteSecret)
+  const server = new RemoteServer(engine, engineConfig, tokenCounter, secret, config.remoteSecret)
   server.start(port)
 
   console.log(theme.bold('Mini Claude — Headless Mode'))

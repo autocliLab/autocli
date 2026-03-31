@@ -23,6 +23,8 @@ export class ContextManager {
   }
 
   fitToContext(messages: Message[]): Message[] {
+    if (messages.length === 0) return messages
+
     const totalTokens = messages.reduce((sum, m) => sum + this.messageTokens(m), 0)
 
     if (totalTokens <= this.maxTokens) return messages

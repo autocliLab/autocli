@@ -195,7 +195,14 @@ export class QueryEngine {
       }
     }
 
-    const lastAssistant = currentMessages[currentMessages.length - 1]
+    // Find the last assistant message (may not be the final message if loop hit limit)
+    let lastAssistant: Message = { role: 'assistant', content: [{ type: 'text', text: '' }] }
+    for (let i = currentMessages.length - 1; i >= 0; i--) {
+      if (currentMessages[i].role === 'assistant') {
+        lastAssistant = currentMessages[i]
+        break
+      }
+    }
     return { response: lastAssistant, messages: currentMessages }
   }
 }

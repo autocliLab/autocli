@@ -162,6 +162,11 @@ export async function startRepl(options: {
       // Update status
       statusLine.set('tokens', tokenCounter.formatUsage())
     } catch (err) {
+      // Remove the user message we just pushed since the call failed
+      // This prevents consecutive user messages which the API rejects
+      if (messages.length > 0 && messages[messages.length - 1].role === 'user') {
+        messages.pop()
+      }
       console.log(theme.error(`Error: ${(err as Error).message}`))
     }
 
