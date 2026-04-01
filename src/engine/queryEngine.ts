@@ -552,15 +552,16 @@ export class QueryEngine {
 }
 
 // Background agent management
-export interface BackgroundAgent {
+export type BackgroundAgent = {
   id: string
   description: string
-  status: 'running' | 'completed' | 'failed'
-  result?: string
-  error?: string
   notified: boolean
   startedAt: number
-}
+} & (
+  | { status: 'running' }
+  | { status: 'completed'; result: string }
+  | { status: 'failed'; error: string }
+)
 
 export class BackgroundAgentManager {
   private agents = new Map<string, BackgroundAgent>()
@@ -586,12 +587,16 @@ export class BackgroundAgentManager {
 
   complete(id: string, result: string): void {
     const agent = this.agents.get(id)
-    if (agent) { agent.status = 'completed'; agent.result = result }
+    if (agent) {
+      this.agents.set(id, { ...agent, status: 'completed', result } as BackgroundAgent)
+    }
   }
 
   fail(id: string, error: string): void {
     const agent = this.agents.get(id)
-    if (agent) { agent.status = 'failed'; agent.error = error }
+    if (agent) {
+      this.agents.set(id, { ...agent, status: 'failed', error } as BackgroundAgent)
+    }
   }
 
   getPendingNotifications(): BackgroundAgent[] {

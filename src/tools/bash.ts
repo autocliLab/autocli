@@ -29,6 +29,9 @@ export const bashTool: ToolDefinition = {
       /\bdd\s+.*of=\/dev\/[sh]d/,                       // dd to raw device
       /\bmkfs\b/,                                        // format filesystem
       /\b:(){ :\|:& };:\b/,                             // fork bomb
+      /\|\s*(?:bash|sh|zsh)\b/,                         // pipe to shell
+      /\beval\s+/,                                       // eval command
+      /\$\(.*(?:rm|dd|mkfs|format)\b/,                  // command substitution with dangerous commands
     ]
 
     const isDangerous = DENY_PATTERNS.some(p => p.test(command))
@@ -39,7 +42,8 @@ export const bashTool: ToolDefinition = {
       }
     }
 
-    const effectiveCwd = (context.sharedState?.bashCwd as string) || context.workingDir
+    const sharedState = context.sharedState || {}
+    const effectiveCwd = (sharedState.bashCwd as string) || context.workingDir
 
     // Background execution via BackgroundTaskManager
     if (run_in_background) {
@@ -76,7 +80,8 @@ export const bashTool: ToolDefinition = {
       let timedOut = false
       const timer = setTimeout(() => {
         timedOut = true
-        try { process.kill(-proc.pid, 9) } catch { proc.kill(9) }
+        try { proc.kill('SIGTERM') } catch {}
+        setTimeout(() => { try { proc.kill('SIGKILL') } catch {} }, 500)
       }, timeout)
 
       const [stdout, stderr] = await Promise.all([
@@ -98,8 +103,8 @@ export const bashTool: ToolDefinition = {
       if (markerIdx !== -1) {
         userOutput = stdout.slice(0, markerIdx)
         const newCwd = stdout.slice(markerIdx + cwdMarker.length).trim()
-        if (newCwd && context.sharedState) {
-          context.sharedState.bashCwd = newCwd
+        if (newCwd) {
+          sharedState.bashCwd = newCwd
         }
       }
 

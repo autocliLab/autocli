@@ -578,9 +578,14 @@ export async function startRepl(options: {
     // Check for background agent completions
     const bgNotifs = backgroundManager?.getPendingNotifications() || []
     for (const notif of bgNotifs) {
-      const notifText = notif.status === 'completed'
-        ? `[Background agent "${notif.description}" completed]\n\nResult:\n${notif.result}`
-        : `[Background agent "${notif.description}" failed: ${notif.error}]`
+      let notifText: string
+      if (notif.status === 'completed') {
+        notifText = `[Background agent "${notif.description}" completed]\n\nResult:\n${notif.result}`
+      } else if (notif.status === 'failed') {
+        notifText = `[Background agent "${notif.description}" failed: ${notif.error}]`
+      } else {
+        notifText = `[Background agent "${notif.description}" is still running]`
+      }
       layout.log(theme.info(notifText))
       messages.push({ role: 'user', content: notifText })
     }

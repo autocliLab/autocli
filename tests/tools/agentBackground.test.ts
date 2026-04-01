@@ -14,8 +14,9 @@ describe('BackgroundAgentManager', () => {
     const mgr = new BackgroundAgentManager()
     mgr.register('agent-1', 'task')
     mgr.complete('agent-1', 'Done!')
-    expect(mgr.get('agent-1')!.status).toBe('completed')
-    expect(mgr.get('agent-1')!.result).toBe('Done!')
+    const agent = mgr.get('agent-1')!
+    expect(agent.status).toBe('completed')
+    expect(agent.status === 'completed' && agent.result).toBe('Done!')
   })
 
   test('lists pending notifications', () => {
@@ -24,7 +25,8 @@ describe('BackgroundAgentManager', () => {
     mgr.complete('a1', 'result1')
     const pending = mgr.getPendingNotifications()
     expect(pending).toHaveLength(1)
-    expect(pending[0].result).toBe('result1')
+    const first = pending[0]
+    expect(first.status === 'completed' && first.result).toBe('result1')
     expect(mgr.getPendingNotifications()).toHaveLength(0)
   })
 

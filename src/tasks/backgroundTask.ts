@@ -31,6 +31,7 @@ export class BackgroundTaskManager {
     })
 
     task.pid = proc.pid
+    proc.unref()
 
     proc.stdout?.on('data', (data: Buffer) => {
       task.output += data.toString()
@@ -44,12 +45,16 @@ export class BackgroundTaskManager {
       task.output += data.toString()
     })
 
+    let settled = false
+
     proc.on('close', (code) => {
+      if (settled) return; settled = true
       task.status = code === 0 ? 'completed' : 'failed'
       task.exitCode = code ?? 1
     })
 
     proc.on('error', (err) => {
+      if (settled) return; settled = true
       task.status = 'failed'
       task.output += `\nProcess error: ${err.message}`
     })
