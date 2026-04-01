@@ -3,7 +3,7 @@ import type { ToolDefinition } from './types.js'
 
 export const bashTool: ToolDefinition = {
   name: 'Bash',
-  description: 'Execute a shell command and return the output.',
+  description: 'Execute a shell command. Use for: running tests, installing packages, git operations, and system commands. Do NOT use for file reading (use Read), file searching (use Glob/Grep), or file editing (use Edit).',
   inputSchema: z.object({
     command: z.string().describe('The shell command to execute'),
     timeout: z.number().optional().describe('Timeout in milliseconds (default 120000)'),
@@ -37,9 +37,15 @@ export const bashTool: ToolDefinition = {
       }
     }
 
+    const effectiveCwd = (context.sharedState?.bashCwd as string) || context.workingDir
+
     try {
-      const proc = Bun.spawn(['bash', '-c', command], {
-        cwd: context.workingDir,
+      // Append pwd tracking to capture directory changes
+      const trackingCommand = `${command}\n__exit=$?\necho "___MINI_CWD___$(pwd)"\nexit $__exit`
+
+      // Use setsid so we can kill the entire process group on timeout
+      const proc = Bun.spawn(['setsid', 'bash', '-c', trackingCommand], {
+        cwd: effectiveCwd,
         stdout: 'pipe',
         stderr: 'pipe',
         env: { ...process.env },
@@ -48,7 +54,7 @@ export const bashTool: ToolDefinition = {
       let timedOut = false
       const timer = setTimeout(() => {
         timedOut = true
-        proc.kill()
+        try { process.kill(-proc.pid, 9) } catch { proc.kill(9) }
       }, timeout)
 
       const [stdout, stderr] = await Promise.all([
@@ -63,7 +69,19 @@ export const bashTool: ToolDefinition = {
         return { output: `Command timed out after ${timeout}ms`, isError: true }
       }
 
-      const output = (stdout + (stderr ? '\n' + stderr : '')).trim()
+      // Extract tracked cwd
+      let userOutput = stdout
+      const cwdMarker = '___MINI_CWD___'
+      const markerIdx = stdout.lastIndexOf(cwdMarker)
+      if (markerIdx !== -1) {
+        userOutput = stdout.slice(0, markerIdx)
+        const newCwd = stdout.slice(markerIdx + cwdMarker.length).trim()
+        if (newCwd && context.sharedState) {
+          context.sharedState.bashCwd = newCwd
+        }
+      }
+
+      const output = (userOutput + (stderr ? '\n' + stderr : '')).trim()
 
       if (exitCode !== 0) {
         return { output: output || `Exit code: ${exitCode}`, isError: true }

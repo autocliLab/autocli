@@ -103,7 +103,7 @@ async function runOneShot(prompt: string, workingDir: string, modelFlag?: string
   const { QueryEngine } = await import('./engine/queryEngine.js')
   const { registerAllTools } = await import('./tools/registerAll.js')
   const { setGlobalEngine } = await import('./repl.js')
-  const { buildGitContext } = await import('./git/gitContext.js')
+  const { buildGitContext, buildProjectHint } = await import('./git/gitContext.js')
 
   const config = loadConfig()
   const apiKey = getApiKey()
@@ -124,6 +124,7 @@ async function runOneShot(prompt: string, workingDir: string, modelFlag?: string
   const contextManager = new ContextManager()
 
   const gitContext = await buildGitContext(workingDir)
+  const projectHint = await buildProjectHint(workingDir)
 
   const engine = new QueryEngine({
     apiKey,
@@ -137,6 +138,7 @@ async function runOneShot(prompt: string, workingDir: string, modelFlag?: string
       alwaysAllow: new Set(),
     },
     gitContext,
+    projectHint,
   })
   setGlobalEngine(engine)
 

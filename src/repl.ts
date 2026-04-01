@@ -26,7 +26,7 @@ import type { HookEvent } from './hooks/types.js'
 import { join } from 'path'
 import { loadClaudeMdFiles } from './memory/claudeMd.js'
 import { runMemoryExtraction } from './memory/autoExtract.js'
-import { buildGitContext } from './git/gitContext.js'
+import { buildGitContext, buildProjectHint } from './git/gitContext.js'
 
 let globalEngine: QueryEngine | null = null
 export function getGlobalEngine(): QueryEngine | null {
@@ -91,6 +91,7 @@ export async function startRepl(options: {
     : ''
 
   const gitContext = await buildGitContext(workingDir)
+  const projectHint = await buildProjectHint(workingDir)
 
   const engine = new QueryEngine({
     apiKey,
@@ -107,6 +108,7 @@ export async function startRepl(options: {
     skillsPrompt,
     claudeMdPrompt: loadClaudeMdFiles(workingDir),
     gitContext,
+    projectHint,
     maxSessionCost: config.maxSessionCost,
   })
   globalEngine = engine
