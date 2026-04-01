@@ -52,7 +52,7 @@ export async function callClaudeLocal(params: {
     '--print',
     '--output-format', 'stream-json',
     '--verbose',
-    '--dangerously-skip-permissions',
+    ...(params.config?.permissionMode === 'auto-approve' ? ['--dangerously-skip-permissions'] : []),
     ...extraArgs,
   ]
 
