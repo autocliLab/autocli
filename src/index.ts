@@ -19,6 +19,8 @@ function parseArgs() {
     else if (arg === '--model' || arg === '-m') { flags.model = args[++i] }
     else if (arg === '--set-key') { flags.setKey = args[++i] }
     else if (arg === '--provider') { flags.provider = args[++i] }
+    else if (arg === '--scheduler') { flags.scheduler = true }
+    else if (arg === '--run-team') { flags.runTeam = args[++i] }
     else if (!arg.startsWith('-')) { flags.prompt = arg }
   }
   return flags
@@ -51,6 +53,8 @@ ${theme.bold('Options:')}
   --provider <name>             Provider (anthropic, openai, claude-local)
   --headless                    Run as headless daemon
   --set-key <key>               Save API key
+  --scheduler                    Run as scheduler daemon
+  --run-team <name>              Run a team template once (for cron)
 `)
     process.exit(0)
   }
@@ -61,6 +65,39 @@ ${theme.bold('Options:')}
     config.apiKey = flags.setKey as string
     saveConfig(config)
     console.log(theme.success('API key saved.'))
+    process.exit(0)
+  }
+
+  if (flags.scheduler) {
+    const { AgentStore } = await import('./agents/agentStore.js')
+    const { ScheduleStore } = await import('./scheduler/scheduleStore.js')
+    const { Scheduler } = await import('./scheduler/scheduler.js')
+    const agentStore = new AgentStore()
+    const scheduleStore = new ScheduleStore()
+    const active = scheduleStore.list().filter(s => s.enabled)
+    if (active.length === 0) {
+      console.log(theme.warning('No enabled schedules found.'))
+      process.exit(0)
+    }
+    const scheduler = new Scheduler(scheduleStore, agentStore, async () => {})
+    scheduler.start()
+    console.log(theme.info(`Scheduler daemon started with ${active.length} schedule(s). Press Ctrl+C to stop.`))
+    await new Promise(() => {}) // block forever
+    return
+  }
+
+  if (flags.runTeam) {
+    const { AgentStore } = await import('./agents/agentStore.js')
+    const agentStore = new AgentStore()
+    const template = agentStore.loadTeam(flags.runTeam as string)
+    if (!template) {
+      console.error(theme.error(`Team "${flags.runTeam}" not found.`))
+      process.exit(1)
+    }
+    console.log(theme.info(`Running team "${template.name}"...`))
+    // For now, just report — full execution requires engine setup
+    console.log(theme.dim(`Goal: ${template.goal}`))
+    console.log(theme.dim(`Agents: ${template.agents.map(a => a.agentName).join(', ')}`))
     process.exit(0)
   }
 

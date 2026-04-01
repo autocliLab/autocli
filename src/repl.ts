@@ -48,6 +48,10 @@ import { vimCommand } from './commands/vim.js'
 import { brainCommand } from './commands/brain.js'
 import { searchCommand } from './commands/search.js'
 import { agentsCommand } from './commands/agents.js'
+import { ScheduleStore } from './scheduler/scheduleStore.js'
+import { Scheduler } from './scheduler/scheduler.js'
+import { AgentStore } from './agents/agentStore.js'
+import { scheduleCommand } from './commands/schedule.js'
 import { BrainReader } from './brain/reader.js'
 import { InputHistory } from './ui/history.js'
 import { checkForUpdate, showUpdateNotice } from './utils/updater.js'
@@ -126,6 +130,7 @@ export async function startRepl(options: {
   commandRegistry.register(brainCommand)
   commandRegistry.register(searchCommand)
   commandRegistry.register(agentsCommand)
+  commandRegistry.register(scheduleCommand)
 
   const brainReader = new BrainReader(join(platform.configDir, 'brain'))
 
@@ -267,6 +272,43 @@ export async function startRepl(options: {
   layout.log(`  ${theme.dim('Type')} ${theme.info('/help')} ${theme.dim('for commands')}`)
   layout.log('')
 
+  // Scheduler setup
+  const agentStore = new AgentStore()
+  const scheduleStore = new ScheduleStore()
+  const scheduler = new Scheduler(scheduleStore, agentStore, async (template, wd) => {
+    const workers = template.agents.map(a => {
+      const def = agentStore.loadAgent(a.agentName)
+      return { name: a.agentName, task: a.task, agentType: def?.agentType || 'general-purpose', model: def?.model }
+    })
+    const team = teamManager.createTeam(template.name, template.goal, workers)
+    layout.log(theme.info(`[Scheduler] Team "${template.name}" started (${team.workers.length} workers)`))
+
+    for (const worker of team.workers) {
+      teamManager.startWorker(team.id, worker.id)
+      const def = agentStore.loadAgent(worker.name)
+      const sysPrompt = def ? agentStore.buildSystemPrompt(def) : undefined
+      ;(async () => {
+        try {
+          const { runSubAgent } = await import('./engine/queryEngine.js')
+          const result = await runSubAgent(
+            `${sysPrompt ? sysPrompt + '\n\n' : ''}Task: ${worker.task}`,
+            worker.name,
+            { workingDir: wd, sharedState: {} },
+            { subagentType: worker.agentType, model: worker.model },
+          )
+          teamManager.completeWorker(team.id, worker.id, result)
+        } catch (err) {
+          teamManager.failWorker(team.id, worker.id, (err as Error).message)
+        }
+      })()
+    }
+  })
+
+  if (scheduleStore.list().some(s => s.enabled)) {
+    scheduler.start()
+    layout.log(theme.dim(`Scheduler active (${scheduleStore.list().filter(s => s.enabled).length} schedules)`))
+  }
+
   // Check for updates (non-blocking)
   checkForUpdate().then(v => {
     if (v) showUpdateNotice(v)
@@ -400,6 +442,23 @@ export async function startRepl(options: {
           if (activeTeam.goal) layout.log(theme.dim(`  Goal: ${activeTeam.goal}`))
         }
         continue
+      } else if (result.type === 'team_save') {
+        const activeTeam = teamManager.getActiveTeam()
+        if (!activeTeam) {
+          layout.log(theme.error('No active team to save.'))
+        } else {
+          const { AgentStore } = await import('./agents/agentStore.js')
+          const agentStore = new AgentStore()
+          const template = {
+            name: result.saveName,
+            goal: activeTeam.goal,
+            agents: activeTeam.workers.map(w => ({ agentName: w.name, task: w.task })),
+            workingDir: workingDir,
+          }
+          agentStore.saveTeam(template)
+          layout.log(theme.success(`Team saved as "${result.saveName}"`))
+        }
+        continue
       } else if (result.type === 'list_bg_tasks') {
         const tasks = bgTaskManager.list()
         if (tasks.length === 0) {
@@ -424,6 +483,16 @@ export async function startRepl(options: {
         }
         messages = messages.slice(0, cutIdx)
         layout.log(theme.success(`Rewound ${turnsFound} turn(s). ${messages.length} messages remaining.`))
+        continue
+      } else if (result.type === 'run_team') {
+        const template = agentStore.loadTeam(result.team)
+        if (!template) {
+          layout.log(theme.error(`Team "${result.team}" not found.`))
+        } else {
+          layout.log(theme.info(`Running team "${result.team}"...`))
+          const teamPrompt = `Run the team "${template.name}" with goal: ${template.goal}\n\nAgents:\n${template.agents.map((a: { agentName: string; task: string }) => `- ${a.agentName}: ${a.task}`).join('\n')}`
+          messages.push({ role: 'user', content: teamPrompt })
+        }
         continue
       } else {
         layout.log(result.text)
