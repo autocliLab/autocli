@@ -18,6 +18,7 @@ function parseArgs() {
     else if (arg === '--prompt') { flags.prompt = args[++i] }
     else if (arg === '--model' || arg === '-m') { flags.model = args[++i] }
     else if (arg === '--set-key') { flags.setKey = args[++i] }
+    else if (arg === '--provider') { flags.provider = args[++i] }
     else if (!arg.startsWith('-')) { flags.prompt = arg }
   }
   return flags
@@ -46,7 +47,8 @@ ${theme.bold('Options:')}
   -v, --version                 Show version
   -r, --resume [id]             Resume session (latest if no id)
   -p, --port <port>             Port for headless mode (default: 3456)
-  -m, --model <model>           Model to use (sonnet, opus, haiku)
+  -m, --model <model>           Model to use (sonnet, opus, haiku, local)
+  --provider <name>             Provider (anthropic, openai, claude-local)
   --headless                    Run as headless daemon
   --set-key <key>               Save API key
 `)
@@ -84,7 +86,7 @@ ${theme.bold('Options:')}
   }
 
   if (flags.prompt) {
-    await runOneShot(flags.prompt as string, process.cwd(), flags.model as string | undefined)
+    await runOneShot(flags.prompt as string, process.cwd(), flags.model as string | undefined, flags.provider as string | undefined)
     return
   }
 
@@ -92,10 +94,11 @@ ${theme.bold('Options:')}
     resume: flags.resume as string | undefined,
     workingDir: process.cwd(),
     model: flags.model as string | undefined,
+    provider: flags.provider as string | undefined,
   })
 }
 
-async function runOneShot(prompt: string, workingDir: string, modelFlag?: string): Promise<void> {
+async function runOneShot(prompt: string, workingDir: string, modelFlag?: string, providerFlag?: string): Promise<void> {
   const { loadConfig, getApiKey, resolveModel } = await import('./utils/config.js')
   const { ToolRegistry } = await import('./tools/registry.js')
   const { TokenCounter } = await import('./engine/tokenCounter.js')
@@ -106,6 +109,8 @@ async function runOneShot(prompt: string, workingDir: string, modelFlag?: string
   const { buildGitContext, buildProjectHint } = await import('./git/gitContext.js')
 
   const config = loadConfig()
+  const provider = (providerFlag || config.provider) as 'anthropic' | 'openai' | 'claude-local'
+  if (providerFlag) config.provider = provider
   const apiKey = getApiKey()
 
   const resolvedModel = modelFlag
@@ -134,6 +139,14 @@ async function runOneShot(prompt: string, workingDir: string, modelFlag?: string
     },
     gitContext,
     projectHint,
+    provider,
+    openaiApiKey: config.openaiApiKey,
+    openaiBaseUrl: config.openaiBaseUrl,
+    claudeLocalConfig: provider === 'claude-local' ? {
+      command: config.claudeLocalCommand,
+      args: config.claudeLocalArgs,
+      claudeModel: config.claudeLocalModel,
+    } : undefined,
   })
   setGlobalEngine(engine)
 

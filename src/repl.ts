@@ -71,8 +71,10 @@ export async function startRepl(options: {
   resume?: string
   workingDir?: string
   model?: string
+  provider?: string
 }): Promise<void> {
   const config = loadConfig()
+  if (options.provider) config.provider = options.provider as 'anthropic' | 'openai' | 'claude-local'
   const apiKey = getApiKey()
   const workingDir = options.workingDir || process.cwd()
 
@@ -154,6 +156,14 @@ export async function startRepl(options: {
     provider: config.provider,
     openaiApiKey: config.openaiApiKey,
     openaiBaseUrl: config.openaiBaseUrl,
+    // Always provide claudeLocalConfig so subagents can use claude-local even
+    // when the main provider is different
+    claudeLocalConfig: {
+      command: config.claudeLocalCommand,
+      args: config.claudeLocalArgs,
+      claudeModel: config.claudeLocalModel,
+      permissionMode: config.permissionMode,
+    },
   })
   const wire = new Wire()
   const bgTaskManager = new BackgroundTaskManager()

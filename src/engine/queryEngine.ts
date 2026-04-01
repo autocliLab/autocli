@@ -69,9 +69,10 @@ export interface QueryEngineConfig {
   headless?: boolean
   maxSessionCost?: number
   planMode?: boolean
-  provider?: 'anthropic' | 'openai'
+  provider?: 'anthropic' | 'openai' | 'claude-local'
   openaiApiKey?: string
   openaiBaseUrl?: string
+  claudeLocalConfig?: import('../providers/claudeLocal.js').ClaudeLocalConfig
   wire?: import('../wire/wire.js').Wire
   hookRunner?: import('../hooks/hookRunner.js').HookRunner
   bgTaskManager?: import('../tasks/backgroundTask.js').BackgroundTaskManager
@@ -209,7 +210,39 @@ export class QueryEngine {
 
       let response: Anthropic.Message
 
-      if (this.config.provider === 'openai') {
+      if (this.config.provider === 'claude-local') {
+        const { callClaudeLocal } = await import('../providers/claudeLocal.js')
+        stopSpinnerOnce()
+
+        const localResult = await callClaudeLocal({
+          system: systemPrompt,
+          messages: apiMessages as Array<{ role: string; content: unknown }>,
+          config: this.config.claudeLocalConfig,
+          onText: (text) => {
+            streamRenderer.write(text)
+            this.config.onText?.(text)
+            this.config.wire?.emit('text', { text })
+          },
+          abortSignal,
+        })
+
+        // Claude-local handles tools internally — wrap as text-only response
+        response = {
+          id: `local-${Date.now()}`,
+          type: 'message',
+          role: 'assistant',
+          model: this.config.model,
+          stop_reason: 'end_turn',
+          stop_sequence: null,
+          content: localResult.content.map(b => {
+            if (b.type === 'tool_use') {
+              return { type: 'tool_use' as const, id: b.id, name: b.name, input: b.input }
+            }
+            return { type: 'text' as const, text: b.text }
+          }),
+          usage: { input_tokens: localResult.usage.input_tokens, output_tokens: localResult.usage.output_tokens, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        } as unknown as Anthropic.Message
+      } else if (this.config.provider === 'openai') {
         const { callOpenAI, buildOpenAIConfig } = await import('../providers/openai.js')
         stopSpinnerOnce()
         const oaiConfig = buildOpenAIConfig({ provider: 'openai', apiKey: this.config.openaiApiKey || this.config.apiKey, baseUrl: this.config.openaiBaseUrl, model: this.config.model })
@@ -526,6 +559,7 @@ import { resolveModel as resolveModelAlias } from '../utils/config.js'
 export interface SubAgentOptions {
   subagentType?: string
   model?: string
+  provider?: 'anthropic' | 'openai' | 'claude-local'
   runInBackground?: boolean
 }
 
@@ -534,6 +568,7 @@ function buildSubEngine(
   agentType: AgentType | undefined,
   parentRegistry: ToolRegistry,
   modelOverride?: string,
+  providerOverride?: 'anthropic' | 'openai' | 'claude-local',
 ): QueryEngine {
   const subRegistry = new ToolRegistry()
 
@@ -553,9 +588,15 @@ function buildSubEngine(
     ? resolveModelAlias(modelOverride, parentEngine['config'].model)
     : parentEngine['config'].model
 
+  // Resolve provider: explicit override > agent type default > parent
+  const resolvedProvider = providerOverride
+    || agentType?.provider
+    || parentEngine['config'].provider
+
   return new QueryEngine({
     ...parentEngine['config'],
     model: resolvedModel,
+    provider: resolvedProvider,
     toolRegistry: subRegistry,
     systemPrompt: agentType?.systemPrompt,
     headless: true,
@@ -588,7 +629,7 @@ export async function runSubAgent(
       const agentType = options?.subagentType
         ? getAgentType(options.subagentType)
         : getAgentType('general-purpose')
-      const subEngine = buildSubEngine(engine, agentType, parentRegistry, options?.model)
+      const subEngine = buildSubEngine(engine, agentType, parentRegistry, options?.model, options?.provider)
       ;(async () => {
         try {
           const msgs: Message[] = [{ role: 'user', content: prompt }]
@@ -611,7 +652,7 @@ export async function runSubAgent(
     : getAgentType('general-purpose')
 
   const parentRegistry = engine['config'].toolRegistry as ToolRegistry
-  const subEngine = buildSubEngine(engine, agentType, parentRegistry, options?.model)
+  const subEngine = buildSubEngine(engine, agentType, parentRegistry, options?.model, options?.provider)
 
   // Emit agent_start wire event
   const agentId = `agent-${Date.now()}`

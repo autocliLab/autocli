@@ -5,6 +5,7 @@ export interface AgentType {
   allowedTools: string[]
   readOnly: boolean
   model?: string
+  provider?: 'anthropic' | 'openai' | 'claude-local'
 }
 
 export const AGENT_TYPES: AgentType[] = [

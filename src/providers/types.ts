@@ -8,7 +8,7 @@ export interface ProviderMessage {
 }
 
 export interface ProviderConfig {
-  provider: 'anthropic' | 'openai'
+  provider: 'anthropic' | 'openai' | 'claude-local'
   apiKey: string
   baseUrl?: string
   model: string

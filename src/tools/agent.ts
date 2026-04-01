@@ -11,14 +11,15 @@ export const agentTool: ToolDefinition = {
     description: z.string().describe('Short description of the task'),
     subagent_type: z.string().optional().describe('Agent type: general-purpose, explore, plan'),
     model: z.string().optional().describe('Model override: sonnet, opus, haiku'),
+    provider: z.string().optional().describe('LLM provider override: anthropic, openai, claude-local'),
     run_in_background: z.boolean().optional().describe('Run in background, get notified on completion'),
   }),
   isReadOnly: true,
 
   async call(input, context) {
-    const { prompt, description, subagent_type, model, run_in_background } = input as {
+    const { prompt, description, subagent_type, model, provider, run_in_background } = input as {
       prompt: string; description: string; subagent_type?: string;
-      model?: string; run_in_background?: boolean
+      model?: string; provider?: string; run_in_background?: boolean
     }
 
     try {
@@ -26,6 +27,7 @@ export const agentTool: ToolDefinition = {
       const result = await runSubAgent(prompt, description, context, {
         subagentType: subagent_type,
         model,
+        provider: provider as 'anthropic' | 'openai' | 'claude-local' | undefined,
         runInBackground: run_in_background,
       })
       return { output: result }
