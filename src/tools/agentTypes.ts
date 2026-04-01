@@ -42,3 +42,23 @@ export const AGENT_TYPES: AgentType[] = [
 export function getAgentType(name: string): AgentType | undefined {
   return AGENT_TYPES.find(t => t.name === name)
 }
+
+import type { AgentDefinition } from '../agents/types.js'
+import { AgentStore } from '../agents/agentStore.js'
+
+/** Build an AgentType from a persistent AgentDefinition, merging instruction files into the system prompt */
+export function fromDefinition(def: AgentDefinition): AgentType {
+  const base = getAgentType(def.agentType) || AGENT_TYPES[0]
+  const store = new AgentStore()
+  const fullPrompt = store.buildSystemPrompt(def, base.systemPrompt)
+
+  return {
+    name: def.name,
+    description: def.description,
+    systemPrompt: fullPrompt,
+    allowedTools: def.tools || base.allowedTools,
+    readOnly: base.readOnly,
+    model: def.model,
+    provider: def.provider,
+  }
+}

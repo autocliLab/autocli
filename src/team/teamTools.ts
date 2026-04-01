@@ -1,6 +1,8 @@
 import { z } from 'zod'
 import type { ToolDefinition } from '../tools/types.js'
 import type { TeamManager } from './teamManager.js'
+import { AgentStore } from '../agents/agentStore.js'
+import { fromDefinition } from '../tools/agentTypes.js'
 
 export function createTeamTools(teamManager: TeamManager) {
   const teamCreate: ToolDefinition = {
@@ -32,14 +34,35 @@ export function createTeamTools(teamManager: TeamManager) {
       for (const worker of team.workers) {
         teamManager.startWorker(team.id, worker.id)
 
+        // Check if this worker has a persistent agent definition
+        const agentStore = new AgentStore()
+        const agentDef = agentStore.loadAgent(worker.name)
+        let workerPrompt: string
+        let workerOptions: { subagentType?: string; model?: string } = {
+          subagentType: worker.agentType,
+          model: worker.model,
+        }
+
+        if (agentDef) {
+          // Use persistent agent's instruction files in the prompt
+          const fullPrompt = agentStore.buildSystemPrompt(agentDef)
+          workerPrompt = `${fullPrompt}\n\nYou are worker "${worker.name}" on team "${team.name}".\n\nTeam goal: ${team.goal}\n\nYour specific task: ${worker.task}\n\nComplete your task and report back with results. Be thorough but concise.`
+          workerOptions = {
+            subagentType: agentDef.agentType || worker.agentType,
+            model: agentDef.model || worker.model,
+          }
+        } else {
+          workerPrompt = `You are worker "${worker.name}" on team "${team.name}".\n\nTeam goal: ${team.goal}\n\nYour specific task: ${worker.task}\n\nComplete your task and report back with results. Be thorough but concise.`
+        }
+
         // Fire and forget each worker
         ;(async () => {
           try {
             const result = await runSubAgent(
-              `You are worker "${worker.name}" on team "${team.name}".\n\nTeam goal: ${team.goal}\n\nYour specific task: ${worker.task}\n\nComplete your task and report back with results. Be thorough but concise.`,
+              workerPrompt,
               worker.name,
               context,
-              { subagentType: worker.agentType, model: worker.model },
+              workerOptions,
             )
             teamManager.completeWorker(team.id, worker.id, result)
           } catch (err) {
