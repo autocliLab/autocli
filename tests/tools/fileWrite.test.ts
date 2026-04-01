@@ -3,7 +3,7 @@ import { fileWriteTool } from '../../src/tools/fileWrite.js'
 import { readFileSync, rmSync, existsSync } from 'fs'
 import { join } from 'path'
 
-const TMP = '/tmp/mini-claude-test-write'
+const TMP = '/tmp/autocli-test-write'
 
 afterAll(() => rmSync(TMP, { recursive: true, force: true }))
 

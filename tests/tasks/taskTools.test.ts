@@ -3,7 +3,7 @@ import { createTaskTools } from '../../src/tasks/taskTools.js'
 import { TaskStore } from '../../src/tasks/taskStore.js'
 import { rmSync } from 'fs'
 
-const TMP = '/tmp/mini-claude-test-task-tools'
+const TMP = '/tmp/autocli-test-task-tools'
 
 let store: TaskStore
 let tools: ReturnType<typeof createTaskTools>

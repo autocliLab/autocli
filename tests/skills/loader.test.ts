@@ -3,7 +3,7 @@ import { SkillLoader } from '../../src/skills/loader.js'
 import { mkdirSync, writeFileSync, rmSync } from 'fs'
 import { join } from 'path'
 
-const TMP = '/tmp/mini-claude-test-skills'
+const TMP = '/tmp/autocli-test-skills'
 
 beforeAll(() => {
   mkdirSync(TMP, { recursive: true })

@@ -3,7 +3,7 @@ import { Git } from '../../src/git/git.js'
 import { mkdirSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 
-const TMP = '/tmp/mini-claude-test-git'
+const TMP = '/tmp/autocli-test-git'
 
 beforeAll(async () => {
   rmSync(TMP, { recursive: true, force: true })

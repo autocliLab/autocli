@@ -3,7 +3,7 @@ import { fileReadTool } from '../../src/tools/fileRead.js'
 import { writeFileSync, mkdirSync, rmSync } from 'fs'
 import { join } from 'path'
 
-const TMP = '/tmp/mini-claude-test-read-binary'
+const TMP = '/tmp/autocli-test-read-binary'
 
 beforeAll(() => {
   mkdirSync(TMP, { recursive: true })

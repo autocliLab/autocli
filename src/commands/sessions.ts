@@ -26,7 +26,7 @@ export const sessionsCommand: CommandDefinition = {
       '',
       ...lines,
       '',
-      theme.dim('Resume with: mini-claude --resume <id>'),
+      theme.dim('Resume with: autocli --resume <id>'),
     ].join('\n')
   },
 }

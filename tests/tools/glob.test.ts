@@ -3,7 +3,7 @@ import { globTool } from '../../src/tools/glob.js'
 import { writeFileSync, mkdirSync, rmSync } from 'fs'
 import { join } from 'path'
 
-const TMP = '/tmp/mini-claude-test-glob'
+const TMP = '/tmp/autocli-test-glob'
 
 beforeAll(() => {
   mkdirSync(join(TMP, 'src'), { recursive: true })

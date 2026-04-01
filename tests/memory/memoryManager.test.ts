@@ -2,7 +2,7 @@ import { describe, expect, test, afterAll } from 'bun:test'
 import { MemoryManager } from '../../src/memory/memoryManager.js'
 import { rmSync } from 'fs'
 
-const TMP = '/tmp/mini-claude-test-memory'
+const TMP = '/tmp/autocli-test-memory'
 
 afterAll(() => rmSync(TMP, { recursive: true, force: true }))
 

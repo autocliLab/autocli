@@ -8,13 +8,15 @@ import { registerAllTools } from '../tools/registerAll.js'
 import { setGlobalEngine } from '../repl.js'
 import { theme } from '../ui/theme.js'
 import { randomUUID } from 'crypto'
+import { TeamManager } from '../team/teamManager.js'
 
 export async function startHeadless(port: number): Promise<void> {
   const config = loadConfig()
   const apiKey = getApiKey()
 
+  const teamManager = new TeamManager()
   const toolRegistry = new ToolRegistry()
-  registerAllTools(toolRegistry)
+  registerAllTools(toolRegistry, undefined, undefined, teamManager)
 
   const tokenCounter = new TokenCounter(config.model)
   const contextManager = new ContextManager()
@@ -42,7 +44,7 @@ export async function startHeadless(port: number): Promise<void> {
   const server = new RemoteServer(engine, engineConfig, tokenCounter, secret, config.remoteSecret)
   server.start(port)
 
-  console.log(theme.bold('Mini Claude — Headless Mode'))
+  console.log(theme.bold('autocli — Headless Mode'))
   console.log(theme.dim(`Port: ${port}`))
   console.log(theme.dim(`Secret: ${secret}`))
   console.log(theme.dim('Endpoints: /health, /status, /chat, /chat/stream, /sessions, /approvals'))

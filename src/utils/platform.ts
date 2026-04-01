@@ -7,7 +7,7 @@ export const platform = {
   isMac: process.platform === 'darwin',
   isLinux: process.platform === 'linux',
   homeDir: homedir(),
-  configDir: join(homedir(), '.mini-claude'),
+  configDir: join(homedir(), '.autocli'),
   shell: process.env.SHELL || (process.platform === 'win32' ? 'cmd.exe' : '/bin/bash'),
   columns: process.stdout.columns || 80,
   rows: process.stdout.rows || 24,

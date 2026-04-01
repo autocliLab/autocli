@@ -1,10 +1,10 @@
 {
-  "name": "mini-claude",
+  "name": "autocli",
   "version": "0.1.0",
   "type": "module",
   "main": "src/index.ts",
   "bin": {
-    "mini-claude": "src/index.ts"
+    "autocli": "src/index.ts"
   },
   "scripts": {
     "start": "bun src/index.ts",

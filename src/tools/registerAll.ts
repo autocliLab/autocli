@@ -13,8 +13,11 @@ import type { SkillLoader } from '../skills/loader.js'
 import { createSkillTool } from '../skills/skillTool.js'
 import type { TaskStore } from '../tasks/taskStore.js'
 import { createTaskTools } from '../tasks/taskTools.js'
+import type { TeamManager } from '../team/teamManager.js'
+import { createTeamTools } from '../team/teamTools.js'
+import { brainNoteTool, brainRecallTool } from './brainNote.js'
 
-export function registerAllTools(registry: ToolRegistry, skillLoader?: SkillLoader, taskStore?: TaskStore): void {
+export function registerAllTools(registry: ToolRegistry, skillLoader?: SkillLoader, taskStore?: TaskStore, teamManager?: TeamManager): void {
   registry.register(fileReadTool)
   registry.register(fileWriteTool)
   registry.register(fileEditTool)
@@ -26,6 +29,8 @@ export function registerAllTools(registry: ToolRegistry, skillLoader?: SkillLoad
   registry.register(askUserTool)
   registry.register(enterPlanModeTool)
   registry.register(exitPlanModeTool)
+  registry.register(brainNoteTool)
+  registry.register(brainRecallTool)
   if (skillLoader) {
     registry.register(createSkillTool(skillLoader))
   }
@@ -35,5 +40,11 @@ export function registerAllTools(registry: ToolRegistry, skillLoader?: SkillLoad
     registry.register(tasks.update)
     registry.register(tasks.list)
     registry.register(tasks.get)
+  }
+  if (teamManager) {
+    const team = createTeamTools(teamManager)
+    registry.register(team.teamCreate)
+    registry.register(team.teamStatus)
+    registry.register(team.sendMessage)
   }
 }

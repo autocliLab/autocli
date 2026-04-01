@@ -3,7 +3,7 @@ import { grepTool } from '../../src/tools/grep.js'
 import { writeFileSync, mkdirSync, rmSync } from 'fs'
 import { join } from 'path'
 
-const TMP = '/tmp/mini-claude-test-grep'
+const TMP = '/tmp/autocli-test-grep'
 
 beforeAll(() => {
   mkdirSync(TMP, { recursive: true })

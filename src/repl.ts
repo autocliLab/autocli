@@ -241,7 +241,7 @@ export async function startRepl(options: {
 
   console.log()
   console.log(theme.bold('  ╭─────────────────────────╮'))
-  console.log(theme.bold('  │') + theme.info('     Mini Claude v0.1.0  ') + theme.bold('│'))
+  console.log(theme.bold('  │') + theme.info('     autocli v0.1.0  ') + theme.bold('│'))
   console.log(theme.bold('  ╰─────────────────────────╯'))
   console.log()
   console.log(`  ${theme.dim('Model:')}   ${resolvedModel.split('-').slice(0, 2).join(' ')}`)

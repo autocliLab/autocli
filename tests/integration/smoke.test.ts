@@ -17,9 +17,9 @@ describe('Integration: all subsystems initialize', () => {
     const reg = new ToolRegistry()
     registerAllTools(reg)
     const tools = reg.list()
-    expect(tools.length).toBe(11)
+    expect(tools.length).toBe(13)
     expect(tools.map(t => t.name).sort()).toEqual([
-      'Agent', 'AskUser', 'Bash', 'Edit', 'EnterPlanMode', 'ExitPlanMode', 'Glob', 'Grep', 'Read', 'Think', 'Write',
+      'Agent', 'AskUser', 'Bash', 'BrainNote', 'BrainRecall', 'Edit', 'EnterPlanMode', 'ExitPlanMode', 'Glob', 'Grep', 'Read', 'Think', 'Write',
     ])
   })
 
@@ -35,13 +35,13 @@ describe('Integration: all subsystems initialize', () => {
     registerAllTools(toolRegistry)
     const tokenCounter = new TokenCounter('claude-sonnet-4-20250514')
     const contextManager = new ContextManager()
-    const sessionStore = new SessionStore('/tmp/mini-claude-smoke-test')
-    const memoryManager = new MemoryManager('/tmp/mini-claude-smoke-memory')
+    const sessionStore = new SessionStore('/tmp/autocli-smoke-test')
+    const memoryManager = new MemoryManager('/tmp/autocli-smoke-memory')
     const skillLoader = new SkillLoader([])
     const hookRunner = new HookRunner([])
     const permissionGate = new PermissionGate({ mode: 'default', rules: [], alwaysAllow: new Set() })
 
-    expect(toolRegistry.list().length).toBe(11)
+    expect(toolRegistry.list().length).toBe(13)
     expect(tokenCounter.totalCost).toBe(0)
     expect(contextManager.estimateTokens('hello')).toBeGreaterThan(0)
     expect(sessionStore.list()).toBeDefined()

@@ -10,7 +10,7 @@ export class RemoteAuth {
   }
 
   generateToken(expiresIn = '24h'): string {
-    return jwt.sign({ type: 'mini-claude-remote' }, this.secret, { expiresIn })
+    return jwt.sign({ type: 'autocli-remote' }, this.secret, { expiresIn })
   }
 
   verifyToken(token: string): boolean {

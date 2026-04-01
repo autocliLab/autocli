@@ -27,19 +27,19 @@ async function main() {
   const flags = parseArgs()
 
   if (flags.version) {
-    console.log('mini-claude v0.1.0')
+    console.log('autocli v0.1.0')
     process.exit(0)
   }
 
   if (flags.help) {
     console.log(`
-${theme.bold('mini-claude')} — A minimal AI coding assistant
+${theme.bold('autocli')} — A minimal AI coding assistant
 
 ${theme.bold('Usage:')}
-  mini-claude                    Start interactive REPL
-  mini-claude "prompt"           One-shot query
-  mini-claude --resume [id]      Resume a session
-  mini-claude --headless         Start as remote daemon
+  autocli                    Start interactive REPL
+  autocli "prompt"           One-shot query
+  autocli --resume [id]      Resume a session
+  autocli --headless         Start as remote daemon
 
 ${theme.bold('Options:')}
   -h, --help                    Show this help

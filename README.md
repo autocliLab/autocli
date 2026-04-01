@@ -1,4 +1,4 @@
-# Mini Claude
+# autocli
 
 A minimal, fully-featured AI coding assistant CLI. All the power of Claude Code in ~8,500 lines.
 
@@ -74,7 +74,7 @@ curl http://localhost:3456/status \
 
 ## Configuration
 
-Settings are stored in `~/.mini-claude/config.json`:
+Settings are stored in `~/.autocli/config.json`:
 
 ```json
 {
@@ -88,7 +88,7 @@ Settings are stored in `~/.mini-claude/config.json`:
 
 ## Skills
 
-Place `.md` files with frontmatter in `~/.mini-claude/skills/`:
+Place `.md` files with frontmatter in `~/.autocli/skills/`:
 
 ```markdown
 ---
@@ -101,7 +101,7 @@ Instructions for the LLM...
 
 ## Memory
 
-Memories are stored in `~/.mini-claude/memory/` as markdown files with frontmatter. Types: `user`, `feedback`, `project`, `reference`.
+Memories are stored in `~/.autocli/memory/` as markdown files with frontmatter. Types: `user`, `feedback`, `project`, `reference`.
 
 ## Development
 

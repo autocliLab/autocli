@@ -2,7 +2,7 @@ import { describe, expect, test, afterAll, beforeEach } from 'bun:test'
 import { TaskStore } from '../../src/tasks/taskStore.js'
 import { rmSync } from 'fs'
 
-const TMP = '/tmp/mini-claude-test-tasks'
+const TMP = '/tmp/autocli-test-tasks'
 
 beforeEach(() => rmSync(TMP, { recursive: true, force: true }))
 afterAll(() => rmSync(TMP, { recursive: true, force: true }))

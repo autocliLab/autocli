@@ -43,7 +43,7 @@ export function saveConfig(config: AppConfig): void {
 export function getApiKey(): string {
   const key = process.env.ANTHROPIC_API_KEY || loadConfig().apiKey
   if (!key) {
-    console.error('Set ANTHROPIC_API_KEY env var or run: mini-claude --set-key <key>')
+    console.error('Set ANTHROPIC_API_KEY env var or run: autocli --set-key <key>')
     process.exit(1)
   }
   return key

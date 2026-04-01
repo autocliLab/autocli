@@ -3,7 +3,7 @@ import { fileEditTool } from '../../src/tools/fileEdit.js'
 import { writeFileSync, readFileSync, mkdirSync, rmSync } from 'fs'
 import { join } from 'path'
 
-const TMP = '/tmp/mini-claude-test-edit'
+const TMP = '/tmp/autocli-test-edit'
 const FILE = join(TMP, 'edit.txt')
 
 beforeEach(() => {

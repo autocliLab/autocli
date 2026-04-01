@@ -29,6 +29,13 @@ export const AGENT_TYPES: AgentType[] = [
     allowedTools: ['Read', 'Glob', 'Grep', 'Bash'],
     readOnly: true,
   },
+  {
+    name: 'worker',
+    description: 'Team worker agent. Executes a specific subtask assigned by the team lead.',
+    systemPrompt: 'You are a team worker agent. Focus on your assigned task. Be thorough, report results clearly, and stay within scope.',
+    allowedTools: ['Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash'],
+    readOnly: false,
+  },
 ]
 
 export function getAgentType(name: string): AgentType | undefined {

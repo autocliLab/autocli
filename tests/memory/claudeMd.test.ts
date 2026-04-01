@@ -3,7 +3,7 @@ import { loadClaudeMdFiles } from '../../src/memory/claudeMd.js'
 import { mkdirSync, writeFileSync, rmSync } from 'fs'
 import { join } from 'path'
 
-const TMP = '/tmp/mini-claude-test-claudemd'
+const TMP = '/tmp/autocli-test-claudemd'
 
 beforeAll(() => {
   mkdirSync(join(TMP, '.claude'), { recursive: true })

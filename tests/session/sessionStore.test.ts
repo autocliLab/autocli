@@ -2,7 +2,7 @@ import { describe, expect, test, afterAll } from 'bun:test'
 import { SessionStore } from '../../src/session/sessionStore.js'
 import { rmSync } from 'fs'
 
-const TMP = '/tmp/mini-claude-test-sessions'
+const TMP = '/tmp/autocli-test-sessions'
 
 afterAll(() => rmSync(TMP, { recursive: true, force: true }))
 

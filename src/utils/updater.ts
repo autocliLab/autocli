@@ -19,7 +19,7 @@ export async function checkForUpdate(): Promise<string | null> {
     mkdirSync(platform.configDir, { recursive: true })
     writeFileSync(checkFile, String(Date.now()))
 
-    const res = await fetch('https://registry.npmjs.org/mini-claude/latest', {
+    const res = await fetch('https://registry.npmjs.org/autocli/latest', {
       signal: AbortSignal.timeout(3000),
     })
     if (!res.ok) return null
@@ -41,6 +41,6 @@ export async function checkForUpdate(): Promise<string | null> {
 export function showUpdateNotice(latestVersion: string): void {
   console.log()
   console.log(theme.warning(`  Update available: ${VERSION} → ${latestVersion}`))
-  console.log(theme.dim('  Run: bun update -g mini-claude'))
+  console.log(theme.dim('  Run: bun update -g autocli'))
   console.log()
 }
