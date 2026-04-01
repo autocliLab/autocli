@@ -71,5 +71,13 @@ function renderInline(line: string): string {
   line = line.replace(/`(.+?)`/g, (_, t) => chalk.bgGray.white(` ${t} `))
   line = line.replace(/\[(.+?)\]\((.+?)\)/g, (_, text, url) => `${chalk.blue.underline(text)} ${chalk.dim(`(${url})`)}`)
 
+  // File paths with line numbers (e.g., src/file.ts:42)
+  line = line.replace(/(?<![`\w])([a-zA-Z0-9_./-]+\.[a-zA-Z]{1,6})(:\d+)?(?![`\w])/g, (match, path, lineNum) => {
+    if (path.includes('/') || path.includes('.ts') || path.includes('.js') || path.includes('.py')) {
+      return chalk.underline.blue(match)
+    }
+    return match
+  })
+
   return line
 }

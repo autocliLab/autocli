@@ -1,11 +1,13 @@
 import * as readline from 'readline'
 import { theme } from './theme.js'
 
-export async function readInput(prompt = '> '): Promise<string> {
+export async function readInput(prompt = '> ', history?: string[]): Promise<string> {
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
     prompt,
+    history: history ? [...history].reverse() : [],
+    historySize: 500,
   })
 
   return new Promise((resolve) => {

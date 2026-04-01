@@ -287,6 +287,15 @@ export class QueryEngine {
       const toolResults: ContentBlock[] = []
 
       for (const block of response.content) {
+        if (block.type === 'thinking') {
+          const thinkingText = (block as { thinking: string }).thinking || ''
+          if (!this.config.headless && thinkingText) {
+            console.log(theme.dim('💭 Thinking...'))
+            console.log(theme.dim('  ' + thinkingText.slice(0, 200) + (thinkingText.length > 200 ? '...' : '')))
+          }
+          assistantBlocks.push({ type: 'text', text: `[Thinking: ${thinkingText.slice(0, 500)}]` })
+        }
+
         if (block.type === 'text') {
           assistantBlocks.push({ type: 'text', text: block.text })
           // Text already streamed above — don't re-render

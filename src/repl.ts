@@ -27,6 +27,7 @@ import { exportCommand } from './commands/export.js'
 import { planCommand } from './commands/plan.js'
 import { modelCommand } from './commands/model.js'
 import { yoloCommand } from './commands/yolo.js'
+import { contextCommand } from './commands/context.js'
 import type { Message, CommandResult } from './commands/types.js'
 import type { HookEvent } from './hooks/types.js'
 import { join } from 'path'
@@ -38,6 +39,7 @@ import { BackgroundTaskManager } from './tasks/backgroundTask.js'
 import { tasksCommand } from './commands/tasks.js'
 import { skillsCommand } from './commands/skills.js'
 import { activateCommand } from './commands/activate.js'
+import { InputHistory } from './ui/history.js'
 
 let globalEngine: QueryEngine | null = null
 export function getGlobalEngine(): QueryEngine | null {
@@ -103,6 +105,7 @@ export async function startRepl(options: {
   commandRegistry.register(tasksCommand)
   commandRegistry.register(skillsCommand)
   commandRegistry.register(activateCommand)
+  commandRegistry.register(contextCommand)
 
   const skillsList = skillLoader.list()
   const skillsPrompt = skillsList.length > 0
@@ -202,16 +205,33 @@ export async function startRepl(options: {
   statusLine.set('cost', '$0.0000')
 
   // Banner
+  const gitBranch = await (async () => {
+    try {
+      const { Git } = await import('./git/git.js')
+      const git = new Git(workingDir)
+      return await git.isRepo() ? await git.branch() : null
+    } catch { return null }
+  })()
+
   console.log()
-  console.log(theme.bold('Mini Claude') + theme.dim(' v0.1.0'))
-  console.log(theme.dim(`Working directory: ${workingDir}`))
-  console.log(theme.dim('Type /help for commands, or start chatting.'))
+  console.log(theme.bold('  ╭─────────────────────────╮'))
+  console.log(theme.bold('  │') + theme.info('     Mini Claude v0.1.0  ') + theme.bold('│'))
+  console.log(theme.bold('  ╰─────────────────────────╯'))
   console.log()
+  console.log(`  ${theme.dim('Model:')}   ${resolvedModel.split('-').slice(0, 2).join(' ')}`)
+  console.log(`  ${theme.dim('Dir:')}     ${workingDir}`)
+  if (gitBranch) console.log(`  ${theme.dim('Branch:')}  ${gitBranch}`)
+  console.log(`  ${theme.dim('Type')} ${theme.info('/help')} ${theme.dim('for commands')}`)
+  console.log()
+
+  // Input history
+  const inputHistory = new InputHistory(join(platform.configDir, 'history'))
 
   // REPL loop
   let turnCount = 0
   while (true) {
-    const input = await readInput(theme.info('> '))
+    const input = await readInput(theme.info('> '), inputHistory.getEntries())
+    inputHistory.add(input)
 
     if (!input.trim()) continue
     if (input.trim() === '/exit' || input.trim() === '/quit') {
@@ -263,6 +283,7 @@ export async function startRepl(options: {
             .map(b => b.text).join('\n')
         })
         console.log(theme.success(`Context compacted to ${messages.length} messages`))
+        console.log(theme.dim('  ─── context compacted above this line ───'))
         continue
       } else if (result.type === 'clear') {
         messages = []
@@ -325,6 +346,7 @@ export async function startRepl(options: {
     await hookRunner.run('before_response', { input })
 
     // Query LLM
+    const startTime = Date.now()
     currentAbortController = new AbortController()
     try {
       const result = await engine.run(messages, workingDir, currentAbortController.signal)
@@ -332,6 +354,8 @@ export async function startRepl(options: {
 
       // Update status
       statusLine.set('tokens', tokenCounter.formatUsage())
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
+      console.log(theme.dim(`  ⏱ ${elapsed}s | ${tokenCounter.formatUsage()}`))
 
       // Auto-compact if context is getting too large
       if (contextManager.needsCompaction(messages)) {
@@ -347,6 +371,7 @@ export async function startRepl(options: {
             .map(b => b.text).join('\n')
         }).catch(() => contextManager.fitToContext(messages))
         console.log(theme.dim(`Compacted to ${messages.length} messages`))
+        console.log(theme.dim('  ─── context compacted above this line ───'))
       }
     } catch (err) {
       if ((err as Error).name === 'AbortError' || currentAbortController?.signal.aborted) {

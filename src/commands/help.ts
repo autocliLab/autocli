@@ -24,6 +24,10 @@ export const helpCommand: CommandDefinition = {
       '  /tasks       List background subprocess tasks',
       '  /skills      List available skills',
       '  /activate <key> Activate license key',
+      '  /context     Show context window usage',
+      '  /doctor      Diagnose environment issues',
+      '  /rewind [n]  Undo last N conversation turns (alias: /undo)',
+      '  /copy        Copy last assistant response to clipboard',
       '',
       theme.dim('Type a message to chat, or /command to run a command.'),
     ].join('\n')
