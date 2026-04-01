@@ -11,6 +11,7 @@ export type CommandResult =
   | { type: 'vim_toggle' }
   | { type: 'team_status' }
   | { type: 'run_team'; team: string; workingDir: string }
+  | { type: 'team_save'; saveName: string }
 
 export interface CommandDefinition {
   name: string
