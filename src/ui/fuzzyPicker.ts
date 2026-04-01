@@ -60,6 +60,12 @@ export async function showFuzzyPicker(items: PickerItem[], prompt = 'Search: '):
       return filtered
     }
 
+    const cleanup = () => {
+      if (process.stdin.isTTY) process.stdin.setRawMode(false)
+      process.stdin.removeListener('data', onData)
+      rl.close()
+    }
+
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: true })
 
     // Raw mode for key-by-key input
@@ -69,47 +75,52 @@ export async function showFuzzyPicker(items: PickerItem[], prompt = 'Search: '):
 
     let filtered = render()
 
-    process.stdin.on('data', (data: Buffer) => {
-      const key = data.toString()
+    const onData = (data: Buffer) => {
+      try {
+        const key = data.toString()
 
-      if (key === '\x03' || key === '\x1b') { // Ctrl+C or Escape
-        if (process.stdin.isTTY) process.stdin.setRawMode(false)
-        rl.close()
+        if (key === '\x03' || key === '\x1b') { // Ctrl+C or Escape
+          cleanup()
+          resolve(null)
+          return
+        }
+
+        if (key === '\r' || key === '\n') { // Enter
+          cleanup()
+          resolve(filtered[selectedIdx]?.value || null)
+          return
+        }
+
+        if (key === '\x1b[A') { // Up arrow
+          selectedIdx = Math.max(0, selectedIdx - 1)
+          filtered = render()
+          return
+        }
+
+        if (key === '\x1b[B') { // Down arrow
+          selectedIdx = Math.min(filtered.length - 1, selectedIdx + 1)
+          filtered = render()
+          return
+        }
+
+        if (key === '\x7f' || key === '\b') { // Backspace
+          query = query.slice(0, -1)
+          selectedIdx = 0
+          filtered = render()
+          return
+        }
+
+        if (key.length === 1 && key >= ' ') { // Printable char
+          query += key
+          selectedIdx = 0
+          filtered = render()
+        }
+      } catch {
+        cleanup()
         resolve(null)
-        return
       }
+    }
 
-      if (key === '\r' || key === '\n') { // Enter
-        if (process.stdin.isTTY) process.stdin.setRawMode(false)
-        rl.close()
-        resolve(filtered[selectedIdx]?.value || null)
-        return
-      }
-
-      if (key === '\x1b[A') { // Up arrow
-        selectedIdx = Math.max(0, selectedIdx - 1)
-        filtered = render()
-        return
-      }
-
-      if (key === '\x1b[B') { // Down arrow
-        selectedIdx = Math.min(filtered.length - 1, selectedIdx + 1)
-        filtered = render()
-        return
-      }
-
-      if (key === '\x7f' || key === '\b') { // Backspace
-        query = query.slice(0, -1)
-        selectedIdx = 0
-        filtered = render()
-        return
-      }
-
-      if (key.length === 1 && key >= ' ') { // Printable char
-        query += key
-        selectedIdx = 0
-        filtered = render()
-      }
-    })
+    process.stdin.on('data', onData)
   })
 }

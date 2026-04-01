@@ -1,9 +1,15 @@
-export interface OpenAIMessage {
-  content: Array<
-    | { type: 'text'; text: string }
-    | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
-  >
-  usage: { input_tokens: number; output_tokens: number }
+import type { ProviderMessage, ProviderConfig } from './types.js'
+
+// Re-export ProviderMessage as OpenAIMessage for backwards compatibility
+export type OpenAIMessage = ProviderMessage
+
+// Build an OpenAI-compatible config from our generic provider config
+export function buildOpenAIConfig(config: ProviderConfig): { apiKey: string; baseUrl: string; model: string } {
+  return {
+    apiKey: config.apiKey,
+    baseUrl: config.baseUrl || 'https://api.openai.com/v1',
+    model: config.model,
+  }
 }
 
 export async function callOpenAI(params: {
@@ -14,7 +20,7 @@ export async function callOpenAI(params: {
   system: string
   messages: Array<{ role: string; content: unknown }>
   tools: Array<{ name: string; description: string; input_schema: Record<string, unknown> }>
-}): Promise<OpenAIMessage> {
+}): Promise<ProviderMessage> {
   const baseUrl = params.baseUrl || 'https://api.openai.com/v1'
 
   const openaiMessages: unknown[] = [
@@ -30,9 +36,10 @@ export async function callOpenAI(params: {
         const textParts = (msg.content as Array<Record<string, unknown>>).filter(b => b.type === 'text')
         const toolParts = (msg.content as Array<Record<string, unknown>>).filter(b => b.type === 'tool_use')
         if (toolParts.length > 0) {
+          const combinedText = textParts.map(t => (t as { text: string }).text).join('\n')
           openaiMessages.push({
             role: 'assistant',
-            content: textParts.length > 0 ? (textParts[0] as { text: string }).text : null,
+            content: combinedText || null,
             tool_calls: toolParts.map(t => ({
               id: t.id,
               type: 'function',
@@ -40,7 +47,7 @@ export async function callOpenAI(params: {
             })),
           })
         } else if (textParts.length > 0) {
-          openaiMessages.push({ role: 'assistant', content: (textParts[0] as { text: string }).text })
+          openaiMessages.push({ role: 'assistant', content: textParts.map(t => (t as { text: string }).text).join('\n') })
         }
       } else {
         // Handle tool results (user role)
@@ -90,8 +97,12 @@ export async function callOpenAI(params: {
     usage?: { prompt_tokens: number; completion_tokens: number }
   }
 
-  const choice = data.choices[0]
-  const content: OpenAIMessage['content'] = []
+  const choice = data.choices?.[0]
+  const content: ProviderMessage['content'] = []
+
+  if (!choice) {
+    return { content: [{ type: 'text', text: 'Error: Empty response from API (no choices returned).' }], usage: { input_tokens: 0, output_tokens: 0 } }
+  }
 
   if (choice.message.content) {
     content.push({ type: 'text', text: choice.message.content })

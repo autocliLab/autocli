@@ -1,6 +1,7 @@
 import type { CommandDefinition } from './types.js'
 import { theme } from '../ui/theme.js'
 import { renderProgressBar } from '../ui/progressBar.js'
+import { getLastScrollBuffer } from '../ui/toolResult.js'
 
 export const contextCommand: CommandDefinition = {
   name: 'context',
@@ -19,9 +20,9 @@ export const contextCommand: CommandDefinition = {
 
     const estimatedTokens = Math.ceil(totalChars / 4)
     const maxTokens = 200_000
-    const pct = Math.round((estimatedTokens / maxTokens) * 100)
 
     const bar = renderProgressBar(estimatedTokens / maxTokens)
+    const scrollBuf = getLastScrollBuffer()
 
     return [
       theme.bold('Context Usage:'),
@@ -33,6 +34,7 @@ export const contextCommand: CommandDefinition = {
       `  Input cost:  ${context.totalTokens.input.toLocaleString()} tokens`,
       `  Output cost: ${context.totalTokens.output.toLocaleString()} tokens`,
       `  Total cost:  $${context.totalCost.toFixed(4)}`,
-    ].join('\n')
+      scrollBuf ? `  Scroll buf:  ${scrollBuf.totalLines} lines${scrollBuf.getScrollIndicator()}` : '',
+    ].filter(Boolean).join('\n')
   },
 }

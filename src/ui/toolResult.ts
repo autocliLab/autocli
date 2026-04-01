@@ -1,12 +1,14 @@
 import chalk from 'chalk'
 import { theme } from './theme.js'
 import { formatDiff } from './diff.js'
+import { ScrollBuffer } from './scrollBuffer.js'
 
 const TOOL_ICONS: Record<string, string> = {
   Read: '📄', Write: '✏️', Edit: '🔧', Glob: '🔍', Grep: '🔎',
   Bash: '💻', Agent: '🤖', Skill: '⚡', Think: '💭', AskUser: '❓',
   TaskCreate: '📋', TaskUpdate: '📋', TaskList: '📋', TaskGet: '📋',
   EnterPlanMode: '📐', ExitPlanMode: '📐',
+  WebFetch: '🌐', WebSearch: '🔎',
 }
 
 export function formatToolUse(name: string, input: Record<string, unknown>): string {
@@ -23,17 +25,27 @@ export function formatToolUse(name: string, input: Record<string, unknown>): str
   return [header, ...args].join('\n')
 }
 
+// Shared scroll buffer for reviewing long tool outputs via /scroll command
+let lastScrollBuffer: ScrollBuffer | null = null
+export function getLastScrollBuffer(): ScrollBuffer | null { return lastScrollBuffer }
+
 export function formatToolResult(name: string, output: string, isError?: boolean): string {
   const maxLines = 50
   const lines = output.split('\n')
   const truncated = lines.length > maxLines
   const display = truncated ? lines.slice(0, maxLines) : lines
 
+  // Store in scroll buffer if output is large, so user can scroll through it
+  if (lines.length > maxLines) {
+    lastScrollBuffer = new ScrollBuffer()
+    lastScrollBuffer.append(output)
+  }
+
   let formatted = display.join('\n')
   if (isError) formatted = theme.error(formatted)
 
   if (truncated) {
-    formatted += `\n${theme.dim(`... (${lines.length - maxLines} more lines)`)}`
+    formatted += `\n${theme.dim(`... (${lines.length - maxLines} more lines — ${lastScrollBuffer?.getScrollIndicator()})`)}`
   }
 
   return formatted

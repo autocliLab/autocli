@@ -44,8 +44,8 @@ export class HookRunner {
 
       await proc.exited
 
-      combinedStdout += stdout.trim()
-      combinedStderr += stderr.trim()
+      if (stdout.trim()) combinedStdout += (combinedStdout ? '\n' : '') + stdout.trim()
+      if (stderr.trim()) combinedStderr += (combinedStderr ? '\n' : '') + stderr.trim()
 
       if (proc.exitCode !== 0) {
         blocked = true

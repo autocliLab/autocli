@@ -3,6 +3,8 @@ import { theme } from '../ui/theme.js'
 import { existsSync } from 'fs'
 import { platform } from '../utils/platform.js'
 import { join } from 'path'
+import { formatError, formatWarning, formatSuccess } from '../ui/errorFormat.js'
+import { isLicenseActive } from './activate.js'
 
 export const doctorCommand: CommandDefinition = {
   name: 'doctor',
@@ -48,10 +50,16 @@ export const doctorCommand: CommandDefinition = {
     // Terminal
     checks.push({ label: 'Terminal', status: 'ok', detail: `${platform.columns}×${platform.rows}` })
 
+    // License
+    const licensed = isLicenseActive()
+    checks.push({ label: 'License', status: licensed ? 'ok' : 'warn', detail: licensed ? 'Active' : 'Not activated (run /activate <key>)' })
+
     const lines = [theme.bold('Environment Diagnostics:'), '']
     for (const c of checks) {
-      const icon = c.status === 'ok' ? theme.success('✓') : c.status === 'warn' ? theme.warning('⚠') : theme.error('✗')
-      lines.push(`  ${icon} ${c.label.padEnd(12)} ${c.detail}`)
+      const line = c.status === 'ok' ? formatSuccess(`${c.label.padEnd(12)} ${c.detail}`)
+        : c.status === 'warn' ? formatWarning(`${c.label.padEnd(12)} ${c.detail}`)
+        : formatError(`${c.label.padEnd(12)} ${c.detail}`)
+      lines.push(`  ${line}`)
     }
 
     return lines.join('\n')

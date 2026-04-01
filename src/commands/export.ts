@@ -2,6 +2,7 @@ import type { CommandDefinition } from './types.js'
 import { writeFileSync } from 'fs'
 import { join } from 'path'
 import { theme } from '../ui/theme.js'
+import { formatFileContent } from '../ui/toolResult.js'
 
 export const exportCommand: CommandDefinition = {
   name: 'export',
@@ -39,8 +40,12 @@ export const exportCommand: CommandDefinition = {
             lines.push('> ' + JSON.stringify(block.input, null, 2).split('\n').join('\n> '))
             lines.push('> ```')
           } else if (block.type === 'tool_result') {
-            const preview = block.content.slice(0, 500)
-            lines.push(`> Result: ${preview}${block.content.length > 500 ? '...' : ''}`)
+            // Use formatFileContent for numbered-line display of results
+            const preview = block.content.slice(0, 1000)
+            lines.push('> Result:')
+            lines.push('> ```')
+            lines.push('> ' + formatFileContent('result', preview).split('\n').join('\n> '))
+            lines.push('> ```')
           }
           lines.push('')
         }

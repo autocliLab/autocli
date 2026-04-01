@@ -15,6 +15,10 @@ export class TokenCounter {
     this.pricing = model ? (MODEL_PRICING[model] || DEFAULT_PRICING) : DEFAULT_PRICING
   }
 
+  updateModel(model: string): void {
+    this.pricing = MODEL_PRICING[model] || DEFAULT_PRICING
+  }
+
   add(usage: { input: number; output: number }): void {
     this.totalInput += usage.input
     this.totalOutput += usage.output

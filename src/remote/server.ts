@@ -4,6 +4,7 @@ import type { TokenCounter } from '../engine/tokenCounter.js'
 import { QueryEngine, type QueryEngineConfig } from '../engine/queryEngine.js'
 import type { Message } from '../commands/types.js'
 import { theme } from '../ui/theme.js'
+import type { OpenAIMessage } from '../providers/openai.js'
 
 interface RemoteSession {
   id: string

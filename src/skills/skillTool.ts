@@ -81,8 +81,13 @@ export function createSkillTool(loader: SkillLoader): ToolDefinition {
         content = `Arguments: ${args}\n\n${content}`
       }
 
+      // Enforce tool restrictions by storing in sharedState for the engine to check
+      if (skill.allowedTools && context.sharedState) {
+        context.sharedState.skillAllowedTools = skill.allowedTools
+      }
+
       const toolNote = skill.allowedTools
-        ? `\n\n[This skill restricts tools to: ${skill.allowedTools.join(', ')}]`
+        ? `\n\n[This skill restricts tools to: ${skill.allowedTools.join(', ')}. Other tools will be blocked until the skill completes.]`
         : ''
 
       return {

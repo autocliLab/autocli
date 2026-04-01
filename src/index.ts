@@ -96,7 +96,7 @@ ${theme.bold('Options:')}
 }
 
 async function runOneShot(prompt: string, workingDir: string, modelFlag?: string): Promise<void> {
-  const { loadConfig, getApiKey } = await import('./utils/config.js')
+  const { loadConfig, getApiKey, resolveModel } = await import('./utils/config.js')
   const { ToolRegistry } = await import('./tools/registry.js')
   const { TokenCounter } = await import('./engine/tokenCounter.js')
   const { ContextManager } = await import('./engine/contextManager.js')
@@ -108,13 +108,8 @@ async function runOneShot(prompt: string, workingDir: string, modelFlag?: string
   const config = loadConfig()
   const apiKey = getApiKey()
 
-  const MODEL_MAP: Record<string, string> = {
-    'sonnet': 'claude-sonnet-4-20250514',
-    'opus': 'claude-opus-4-20250514',
-    'haiku': 'claude-haiku-3-5-20241022',
-  }
   const resolvedModel = modelFlag
-    ? MODEL_MAP[modelFlag] || modelFlag
+    ? resolveModel(modelFlag, config.model)
     : config.model
 
   const toolRegistry = new ToolRegistry()

@@ -1,5 +1,6 @@
 import { theme } from './theme.js'
 import type { Message } from '../commands/types.js'
+import { fuzzyMatch } from './fuzzyPicker.js'
 
 export interface SearchResult {
   messageIndex: number
@@ -25,8 +26,16 @@ export function searchTranscript(messages: Message[], query: string): SearchResu
     }
 
     const lowerText = text.toLowerCase()
-    const pos = lowerText.indexOf(lowerQuery)
-    if (pos === -1) continue
+    let pos = lowerText.indexOf(lowerQuery)
+
+    // Fall back to fuzzy matching if exact match not found
+    if (pos === -1) {
+      const { matches } = fuzzyMatch(query, text)
+      if (!matches) continue
+      // Find approximate position of first matching char for preview window
+      const firstChar = query[0]?.toLowerCase()
+      pos = firstChar ? Math.max(0, lowerText.indexOf(firstChar)) : 0
+    }
 
     // Extract context around match
     const start = Math.max(0, pos - 40)

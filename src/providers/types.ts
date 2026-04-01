@@ -1,18 +1,4 @@
-export interface LLMProvider {
-  name: string
-  createMessage(params: {
-    model: string
-    maxTokens: number
-    system: string
-    messages: unknown[]
-    tools: unknown[]
-  }): AsyncIterable<ProviderEvent>
-}
-
-export type ProviderEvent =
-  | { type: 'text'; text: string }
-  | { type: 'message_complete'; message: ProviderMessage }
-
+// Provider types used by the OpenAI adapter and future provider implementations
 export interface ProviderMessage {
   content: Array<
     | { type: 'text'; text: string }
@@ -22,7 +8,7 @@ export interface ProviderMessage {
 }
 
 export interface ProviderConfig {
-  provider: string
+  provider: 'anthropic' | 'openai'
   apiKey: string
   baseUrl?: string
   model: string

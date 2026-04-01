@@ -1,10 +1,5 @@
 import type { CommandDefinition, CommandResult } from './types.js'
-
-const MODEL_ALIASES: Record<string, string> = {
-  'sonnet': 'claude-sonnet-4-20250514',
-  'opus': 'claude-opus-4-20250514',
-  'haiku': 'claude-haiku-3-5-20241022',
-}
+import { resolveModel } from '../utils/config.js'
 
 export const modelCommand: CommandDefinition = {
   name: 'model',
@@ -13,7 +8,7 @@ export const modelCommand: CommandDefinition = {
   async run(args, _context): Promise<string | CommandResult> {
     if (args.length === 0) return 'Usage: /model <name>  (sonnet, opus, haiku)'
     const name = args[0]
-    const resolved = MODEL_ALIASES[name] || name
+    const resolved = resolveModel(name, name)
     return { type: 'model_switch', model: resolved }
   },
 }

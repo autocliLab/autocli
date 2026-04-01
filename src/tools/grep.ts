@@ -54,10 +54,11 @@ export const grepTool: ToolDefinition = {
 async function builtinGrep(
   pattern: string,
   searchPath: string,
-  _fileGlob?: string,
+  fileGlob?: string,
 ): Promise<{ output: string; isError?: boolean }> {
   try {
-    const proc = Bun.spawn(['grep', '-rn', '--include=*', pattern, searchPath], {
+    const includeFlag = fileGlob ? `--include=${fileGlob}` : '--include=*'
+    const proc = Bun.spawn(['grep', '-rn', includeFlag, pattern, searchPath], {
       stdout: 'pipe',
       stderr: 'pipe',
     })

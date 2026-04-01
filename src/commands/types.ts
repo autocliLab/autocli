@@ -9,6 +9,7 @@ export type CommandResult =
   | { type: 'list_bg_tasks' }
   | { type: 'rewind'; turns: number }
   | { type: 'vim_toggle' }
+  | { type: 'team_status' }
 
 export interface CommandDefinition {
   name: string

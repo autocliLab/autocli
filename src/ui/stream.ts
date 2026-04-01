@@ -1,9 +1,21 @@
 export class StreamRenderer {
   private buffer = ''
+  private writeToStdout: boolean
+
+  constructor(writeToStdout = true) {
+    this.writeToStdout = writeToStdout
+  }
 
   write(chunk: string): void {
     this.buffer += chunk
-    process.stdout.write(chunk)
+    if (this.writeToStdout) {
+      process.stdout.write(chunk)
+    }
+  }
+
+  /** Buffer text without writing to stdout (for cases where stdout is handled separately) */
+  capture(chunk: string): void {
+    this.buffer += chunk
   }
 
   clear(): void {
@@ -15,6 +27,8 @@ export class StreamRenderer {
   }
 
   newline(): void {
-    process.stdout.write('\n')
+    if (this.writeToStdout) {
+      process.stdout.write('\n')
+    }
   }
 }

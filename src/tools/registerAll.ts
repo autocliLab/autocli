@@ -16,6 +16,8 @@ import { createTaskTools } from '../tasks/taskTools.js'
 import type { TeamManager } from '../team/teamManager.js'
 import { createTeamTools } from '../team/teamTools.js'
 import { brainNoteTool, brainRecallTool } from './brainNote.js'
+import { webFetchTool } from './webFetch.js'
+import { webSearchTool } from './webSearch.js'
 
 export function registerAllTools(registry: ToolRegistry, skillLoader?: SkillLoader, taskStore?: TaskStore, teamManager?: TeamManager): void {
   registry.register(fileReadTool)
@@ -31,6 +33,8 @@ export function registerAllTools(registry: ToolRegistry, skillLoader?: SkillLoad
   registry.register(exitPlanModeTool)
   registry.register(brainNoteTool)
   registry.register(brainRecallTool)
+  registry.register(webFetchTool)
+  registry.register(webSearchTool)
   if (skillLoader) {
     registry.register(createSkillTool(skillLoader))
   }

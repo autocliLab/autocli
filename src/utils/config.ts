@@ -40,6 +40,16 @@ export function saveConfig(config: AppConfig): void {
   writeFileSync(configPath, JSON.stringify(config, null, 2))
 }
 
+export const MODEL_MAP: Record<string, string> = {
+  'sonnet': 'claude-sonnet-4-20250514',
+  'opus': 'claude-opus-4-20250514',
+  'haiku': 'claude-haiku-3-5-20241022',
+}
+
+export function resolveModel(name: string, fallback: string): string {
+  return MODEL_MAP[name] || name || fallback
+}
+
 export function getApiKey(): string {
   const key = process.env.ANTHROPIC_API_KEY || loadConfig().apiKey
   if (!key) {

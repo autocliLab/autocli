@@ -9,6 +9,6 @@ export const platform = {
   homeDir: homedir(),
   configDir: join(homedir(), '.autocli'),
   shell: process.env.SHELL || (process.platform === 'win32' ? 'cmd.exe' : '/bin/bash'),
-  columns: process.stdout.columns || 80,
-  rows: process.stdout.rows || 24,
+  get columns() { return process.stdout.columns || 80 },
+  get rows() { return process.stdout.rows || 24 },
 }

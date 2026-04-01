@@ -61,10 +61,34 @@ export async function runMemoryExtraction(
   messages: Message[],
   memoryManager: MemoryManager,
   runQuery: (prompt: string) => Promise<string>,
+  apiKey?: string,
+  model?: string,
 ): Promise<number> {
   const existingIndex = memoryManager.getIndex()
   const prompt = buildExtractionPrompt(messages, existingIndex)
-  const result = await runQuery(prompt)
+
+  // Use a direct API call without tools to prevent unintended side effects
+  let result: string
+  if (apiKey) {
+    try {
+      const Anthropic = (await import('@anthropic-ai/sdk')).default
+      const client = new Anthropic({ apiKey })
+      const response = await client.messages.create({
+        model: model || 'claude-haiku-3-5-20241022',
+        max_tokens: 1024,
+        messages: [{ role: 'user', content: prompt }],
+      })
+      result = response.content
+        .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
+        .map(b => b.text)
+        .join('\n')
+    } catch {
+      // Fall back to engine-based query if direct call fails
+      result = await runQuery(prompt)
+    }
+  } else {
+    result = await runQuery(prompt)
+  }
 
   if (result.includes('NO_MEMORIES')) return 0
 

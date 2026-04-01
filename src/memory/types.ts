@@ -7,11 +7,3 @@ export interface MemoryEntry {
   content: string
   filePath: string
 }
-
-export interface MemoryIndex {
-  entries: Array<{
-    title: string
-    file: string
-    summary: string
-  }>
-}

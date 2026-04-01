@@ -23,13 +23,18 @@ export const copyCommand: CommandDefinition = {
 
       if (!text) continue
 
-      // Try clipboard commands
+      // Try clipboard commands — pipe via stdin to avoid shell injection
       try {
-        const cmd = process.platform === 'darwin' ? 'pbcopy'
-          : process.platform === 'win32' ? 'clip'
-          : 'xclip -selection clipboard'
-        const proc = Bun.spawn(['bash', '-c', `echo ${JSON.stringify(text)} | ${cmd}`], { stdout: 'pipe', stderr: 'pipe' })
+        const clipCmd = process.platform === 'darwin' ? ['pbcopy']
+          : process.platform === 'win32' ? ['clip']
+          : ['xclip', '-selection', 'clipboard']
+        const proc = Bun.spawn(clipCmd, { stdin: 'pipe', stdout: 'pipe', stderr: 'pipe' })
+        proc.stdin.write(text)
+        proc.stdin.end()
         await proc.exited
+        if (proc.exitCode !== 0) {
+          return theme.error('Clipboard not available. Install xclip or xsel.')
+        }
         return theme.success(`Copied ${text.length} characters to clipboard.`)
       } catch {
         return theme.error('Clipboard not available. Install xclip or xsel.')

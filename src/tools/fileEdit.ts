@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync, existsSync } from 'fs'
 import { z } from 'zod'
-import chalk from 'chalk'
 import type { ToolDefinition } from './types.js'
+import { formatEditDiff } from '../ui/diff.js'
 
 export const fileEditTool: ToolDefinition = {
   name: 'Edit',
@@ -49,15 +49,11 @@ export const fileEditTool: ToolDefinition = {
 
     writeFileSync(file_path, newContent)
 
-    // Build diff preview
-    const oldLines = old_string.split('\n').map(l => `  ${chalk.red('- ' + l)}`)
-    const newLines = new_string.split('\n').map(l => `  ${chalk.green('+ ' + l)}`)
+    // Build diff preview using shared diff formatter
     const diffPreview = [
       `Edited ${file_path}: replaced ${count} occurrence(s)`,
       '',
-      chalk.dim(`  ${file_path}`),
-      ...oldLines,
-      ...newLines,
+      formatEditDiff(file_path, old_string, new_string),
     ].join('\n')
 
     return { output: diffPreview }

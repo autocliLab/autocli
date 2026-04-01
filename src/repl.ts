@@ -1,4 +1,4 @@
-import { getApiKey, loadConfig } from './utils/config.js'
+import { getApiKey, loadConfig, resolveModel } from './utils/config.js'
 import { ToolRegistry } from './tools/registry.js'
 import { TokenCounter } from './engine/tokenCounter.js'
 import { ContextManager } from './engine/contextManager.js'
@@ -10,7 +10,7 @@ import { SkillLoader } from './skills/loader.js'
 import { TaskStore } from './tasks/taskStore.js'
 import { HookRunner } from './hooks/hookRunner.js'
 import { StatusLine } from './ui/statusLine.js'
-import { readInput } from './ui/input.js'
+import { readInput, setVimMode } from './ui/input.js'
 import { theme } from './ui/theme.js'
 import { platform } from './utils/platform.js'
 import { registerAllTools } from './tools/registerAll.js'
@@ -50,6 +50,9 @@ import { searchCommand } from './commands/search.js'
 import { BrainReader } from './brain/reader.js'
 import { InputHistory } from './ui/history.js'
 import { checkForUpdate, showUpdateNotice } from './utils/updater.js'
+import { renderSwarmStatus, renderAgentTree, type AgentStatus } from './ui/swarmDisplay.js'
+import { formatError, formatInfo } from './ui/errorFormat.js'
+import { isLicenseActive } from './commands/activate.js'
 
 let globalEngine: QueryEngine | null = null
 export function getGlobalEngine(): QueryEngine | null {
@@ -73,13 +76,8 @@ export async function startRepl(options: {
   const apiKey = getApiKey()
   const workingDir = options.workingDir || process.cwd()
 
-  const MODEL_MAP: Record<string, string> = {
-    'sonnet': 'claude-sonnet-4-20250514',
-    'opus': 'claude-opus-4-20250514',
-    'haiku': 'claude-haiku-3-5-20241022',
-  }
   const resolvedModel = options.model
-    ? MODEL_MAP[options.model] || options.model
+    ? resolveModel(options.model, config.model)
     : config.model
 
   // Initialize subsystems
@@ -159,6 +157,9 @@ export async function startRepl(options: {
   })
   const wire = new Wire()
   const bgTaskManager = new BackgroundTaskManager()
+  engine['config'].bgTaskManager = bgTaskManager
+  engine['config'].hookRunner = hookRunner
+  engine['permissionGate'].wire = wire
 
   globalEngine = engine
   backgroundManager = new BackgroundAgentManager()
@@ -247,6 +248,7 @@ export async function startRepl(options: {
   console.log(`  ${theme.dim('Model:')}   ${resolvedModel.split('-').slice(0, 2).join(' ')}`)
   console.log(`  ${theme.dim('Dir:')}     ${workingDir}`)
   if (gitBranch) console.log(`  ${theme.dim('Branch:')}  ${gitBranch}`)
+  if (isLicenseActive()) console.log(`  ${formatInfo('Licensed')}`)
   console.log(`  ${theme.dim('Type')} ${theme.info('/help')} ${theme.dim('for commands')}`)
   console.log()
 
@@ -259,11 +261,12 @@ export async function startRepl(options: {
   const inputHistory = new InputHistory(join(platform.configDir, 'history'))
 
   let vimEnabled = false
+  const cmdNames = commandRegistry.list().map(c => c.name)
 
   // REPL loop
   let turnCount = 0
   while (true) {
-    const input = await readInput(theme.info('> '), inputHistory.getEntries())
+    const input = await readInput(theme.info('> '), inputHistory.getEntries(), cmdNames)
     inputHistory.add(input)
 
     if (!input.trim()) continue
@@ -297,23 +300,6 @@ export async function startRepl(options: {
 
       // Handle typed or string command results
       if (typeof result === 'string') {
-        if (result === '__TEAM_STATUS__') {
-          const activeTeam = teamManager.getActiveTeam()
-          if (!activeTeam) {
-            console.log(theme.dim('No active team. Use the TeamCreate tool to create one.'))
-          } else {
-            const lines = [theme.bold(`Team: ${activeTeam.name} [${activeTeam.status}]`), `Goal: ${activeTeam.goal}`, '']
-            for (const w of activeTeam.workers) {
-              const icon = w.status === 'completed' ? theme.success('✓') : w.status === 'failed' ? theme.error('✗') : w.status === 'running' ? theme.info('▶') : theme.dim('○')
-              const elapsed = w.startedAt ? ` ${Math.round(((w.completedAt || Date.now()) - w.startedAt) / 1000)}s` : ''
-              lines.push(`  ${icon} ${w.name} [${w.status}]${elapsed}`)
-              if (w.result) lines.push(theme.dim(`    ${w.result.slice(0, 120)}...`))
-              if (w.error) lines.push(theme.error(`    ${w.error.slice(0, 120)}`))
-            }
-            console.log(lines.join('\n'))
-          }
-          continue
-        }
         console.log(result)
         continue
       }
@@ -359,13 +345,37 @@ export async function startRepl(options: {
         continue
       } else if (result.type === 'vim_toggle') {
         vimEnabled = !vimEnabled
+        setVimMode(vimEnabled, (mode) => {
+          statusLine.set('mode', mode === 'normal' ? 'NORMAL' : 'INSERT')
+        })
         statusLine.set('mode', vimEnabled ? 'NORMAL' : 'INSERT')
         console.log(vimEnabled ? theme.success('Vim mode ON') : theme.dim('Vim mode OFF'))
         continue
       } else if (result.type === 'model_switch') {
         engine['config'].model = result.model
+        tokenCounter.updateModel(result.model)
         statusLine.set('model', result.model.split('-').slice(0, 2).join(' '))
         console.log(theme.success(`Model switched to ${result.model}`))
+        continue
+      } else if (result.type === 'team_status') {
+        const activeTeam = teamManager.getActiveTeam()
+        if (!activeTeam) {
+          console.log(theme.dim('No active team. Use the TeamCreate tool to create one.'))
+        } else {
+          const agents: AgentStatus[] = activeTeam.workers.map(w => ({
+            id: w.id,
+            name: w.name,
+            type: w.agentType,
+            status: w.status === 'pending' ? 'idle' as const : w.status as 'running' | 'completed' | 'failed',
+            toolCount: 0,
+            tokenCount: 0,
+            elapsed: w.startedAt ? Math.round(((w.completedAt || Date.now()) - w.startedAt) / 1000) : 0,
+          }))
+          console.log(renderSwarmStatus(agents))
+          console.log()
+          console.log(renderAgentTree(agents))
+          if (activeTeam.goal) console.log(theme.dim(`  Goal: ${activeTeam.goal}`))
+        }
         continue
       } else if (result.type === 'list_bg_tasks') {
         const tasks = bgTaskManager.list()
@@ -380,9 +390,17 @@ export async function startRepl(options: {
         }
         continue
       } else if (result.type === 'rewind') {
-        const turns = Math.min(result.turns * 2, messages.length) // *2 for user+assistant pairs
-        messages = messages.slice(0, -turns)
-        console.log(theme.success(`Rewound ${result.turns} turn(s). ${messages.length} messages remaining.`))
+        // Count back N user messages (turns), removing all messages from that point
+        let turnsFound = 0
+        let cutIdx = messages.length
+        for (let i = messages.length - 1; i >= 0 && turnsFound < result.turns; i--) {
+          if (messages[i].role === 'user' && typeof messages[i].content === 'string') {
+            turnsFound++
+            cutIdx = i
+          }
+        }
+        messages = messages.slice(0, cutIdx)
+        console.log(theme.success(`Rewound ${turnsFound} turn(s). ${messages.length} messages remaining.`))
         continue
       } else {
         console.log(result.text)
@@ -392,6 +410,9 @@ export async function startRepl(options: {
       messages.push({ role: 'user', content: input })
       console.log(theme.dim(`  ${new Date().toLocaleTimeString()}`))
     }
+
+    // Track message count before this turn so we can roll back on error
+    const messageCountBeforeTurn = messages.length - 1 // -1 for the user input we just pushed
 
     // Check for background agent completions
     const bgNotifs = backgroundManager?.getPendingNotifications() || []
@@ -413,14 +434,14 @@ export async function startRepl(options: {
       messages.push({ role: 'user', content: notifText })
     }
 
+    // Emit wire event for user input
+    wire.emit('user_input', { input })
+
     // Run hooks
     await hookRunner.run('before_response', { input })
 
-    // Update brain context for this query
-    const lastUserMsg = messages[messages.length - 1]
-    if (lastUserMsg && typeof lastUserMsg.content === 'string') {
-      engine['config'].brainContext = brainReader.buildPromptSection(lastUserMsg.content)
-    }
+    // Update brain context using the user's actual input, not notifications
+    engine['config'].brainContext = brainReader.buildPromptSection(input)
 
     // Query LLM
     const startTime = Date.now()
@@ -461,17 +482,11 @@ export async function startRepl(options: {
         console.log(theme.dim('  ─── context compacted above this line ───'))
       }
     } catch (err) {
-      if ((err as Error).name === 'AbortError' || currentAbortController?.signal.aborted) {
-        // User cancelled — remove the pending user message
-        if (messages.length > 0 && messages[messages.length - 1].role === 'user') {
-          messages.pop()
-        }
-      } else {
-        // Remove the user message we just pushed since the call failed
-        if (messages.length > 0 && messages[messages.length - 1].role === 'user') {
-          messages.pop()
-        }
-        console.log(theme.error(`Error: ${(err as Error).message}`))
+      // Remove all messages we added this turn (user input + notifications)
+      messages.length = messageCountBeforeTurn
+      if ((err as Error).name !== 'AbortError' && !currentAbortController?.signal.aborted) {
+        console.log(formatError((err as Error).message))
+        hookRunner.run('on_error', { error: (err as Error).message }).catch(() => {})
       }
     }
     currentAbortController = null
@@ -498,7 +513,7 @@ export async function startRepl(options: {
         return response.content
           .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
           .map(b => b.text).join('\n')
-      }).catch(() => {}) // Silent failure
+      }, apiKey, 'claude-haiku-3-5-20241022').catch(() => {}) // Silent failure — always use haiku for cost
     }
 
     console.log()

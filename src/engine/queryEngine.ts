@@ -2,14 +2,15 @@ import Anthropic from '@anthropic-ai/sdk'
 import { ToolRegistry } from '../tools/registry.js'
 import type { TokenCounter } from './tokenCounter.js'
 import type { ContextManager } from './contextManager.js'
-import type { ToolContext, ToolResult } from '../tools/types.js'
+import type { ToolContext, ToolResult, ToolCall } from '../tools/types.js'
 import type { Message, ContentBlock } from '../commands/types.js'
 import { PermissionGate } from '../permissions/permissionGate.js'
 import type { PermissionConfig } from '../permissions/types.js'
 import { Spinner } from '../ui/spinner.js'
-import { renderMarkdown } from '../ui/markdown.js'
-import { formatToolUse, formatToolResult } from '../ui/toolResult.js'
+import { formatToolUse, formatToolResult, formatGroupedTools } from '../ui/toolResult.js'
 import { theme } from '../ui/theme.js'
+import { applyInlineMarkdown } from '../ui/streamMarkdown.js'
+import { StreamRenderer } from '../ui/stream.js'
 
 const SYSTEM_PROMPT = `You are an expert coding assistant. You help users with software engineering tasks including writing code, debugging, refactoring, and explaining concepts.
 
@@ -27,6 +28,7 @@ const SYSTEM_PROMPT = `You are an expert coding assistant. You help users with s
 - Use Grep to search file contents, not Bash with grep/rg.
 - Use Bash only for running commands, installing packages, running tests, and git operations.
 - When running shell commands, quote file paths with spaces.
+- Use WebSearch to search the web for information. Use WebFetch to fetch and read a specific URL.
 
 # Code Quality
 - Write safe, secure code. Avoid command injection, XSS, SQL injection.
@@ -71,6 +73,8 @@ export interface QueryEngineConfig {
   openaiApiKey?: string
   openaiBaseUrl?: string
   wire?: import('../wire/wire.js').Wire
+  hookRunner?: import('../hooks/hookRunner.js').HookRunner
+  bgTaskManager?: import('../tasks/backgroundTask.js').BackgroundTaskManager
 }
 
 async function withRetry<T>(
@@ -140,12 +144,14 @@ export class QueryEngine {
     const systemPrompt = this.buildSystemPrompt(workingDir)
     const tools = this.config.toolRegistry.toApiSchemas()
     const sharedState: Record<string, unknown> = {}
+    if (this.config.bgTaskManager) sharedState.bgTaskManager = this.config.bgTaskManager
     const toolContext: ToolContext = { workingDir, sharedState }
 
     const spinner = new Spinner('Thinking...')
     const maxLoops = this.config.maxToolLoops || 40
     let loopCount = 0
 
+    const streamRenderer = new StreamRenderer(!this.config.headless)
     let currentMessages = [...fitted]
     let continueLoop = true
 
@@ -204,13 +210,14 @@ export class QueryEngine {
       let response: Anthropic.Message
 
       if (this.config.provider === 'openai') {
-        const { callOpenAI } = await import('../providers/openai.js')
+        const { callOpenAI, buildOpenAIConfig } = await import('../providers/openai.js')
         stopSpinnerOnce()
+        const oaiConfig = buildOpenAIConfig({ provider: 'openai', apiKey: this.config.openaiApiKey || this.config.apiKey, baseUrl: this.config.openaiBaseUrl, model: this.config.model })
         const oaiResult = await withRetry(async () => {
           return await callOpenAI({
-            apiKey: this.config.openaiApiKey || this.config.apiKey,
-            baseUrl: this.config.openaiBaseUrl,
-            model: this.config.model,
+            apiKey: oaiConfig.apiKey,
+            baseUrl: oaiConfig.baseUrl,
+            model: oaiConfig.model,
             maxTokens: this.config.maxTokens || 8192,
             system: systemPrompt,
             messages: apiMessages as Array<{ role: string; content: unknown }>,
@@ -218,10 +225,15 @@ export class QueryEngine {
           })
         }, 3, !!this.config.headless)
 
-        // Emit text for OpenAI response
+        // Emit text for OpenAI response (apply inline markdown since we have full text)
         for (const block of oaiResult.content) {
           if (block.type === 'text') {
-            if (!this.config.headless) process.stdout.write(block.text)
+            if (!this.config.headless) {
+              const formatted = block.text.split('\n').map(l => applyInlineMarkdown(l)).join('\n')
+              process.stdout.write(formatted)
+            }
+            // Capture raw text in streamRenderer so text_done wire event has content
+            streamRenderer.capture(block.text)
             this.config.onText?.(block.text)
           }
         }
@@ -252,11 +264,16 @@ export class QueryEngine {
             tools: tools as Anthropic.Tool[],
           })
 
+          // Abort the stream if the signal fires
+          if (abortSignal) {
+            const onAbort = () => s.abort()
+            abortSignal.addEventListener('abort', onAbort, { once: true })
+            s.on('end', () => abortSignal.removeEventListener('abort', onAbort))
+          }
+
           s.on('text', (text) => {
             stopSpinnerOnce()
-            if (!this.config.headless) {
-              process.stdout.write(text)
-            }
+            streamRenderer.write(text) // Buffers and writes to stdout (unless headless)
             this.config.onText?.(text)
             this.config.wire?.emit('text', { text })
           })
@@ -266,9 +283,11 @@ export class QueryEngine {
         stopSpinnerOnce() // In case no text was emitted (pure tool_use response)
       }
 
-      if (!this.config.headless) {
-        process.stdout.write('\n')
-      }
+      streamRenderer.newline()
+
+      // Emit text_done wire event with collected content
+      this.config.wire?.emit('text_done', { content: streamRenderer.getContent() })
+      streamRenderer.clear()
 
       // Track tokens
       this.config.tokenCounter.add({
@@ -279,7 +298,8 @@ export class QueryEngine {
       // Check cost limit
       if (this.config.maxSessionCost && this.config.tokenCounter.totalCost >= this.config.maxSessionCost) {
         if (!this.config.headless) {
-          console.log(theme.error(`Session cost limit reached ($${this.config.maxSessionCost}). Use /cost to check usage.`))
+          const { showAlert } = await import('../ui/dialog.js')
+          await showAlert('Cost Limit Reached', `Session cost $${this.config.tokenCounter.totalCost.toFixed(4)} exceeded limit $${this.config.maxSessionCost}. Use /cost to check usage.`)
         }
         break
       }
@@ -295,7 +315,7 @@ export class QueryEngine {
             console.log(theme.dim('💭 Thinking...'))
             console.log(theme.dim('  ' + thinkingText.slice(0, 200) + (thinkingText.length > 200 ? '...' : '')))
           }
-          assistantBlocks.push({ type: 'text', text: `[Thinking: ${thinkingText.slice(0, 500)}]` })
+          // Don't store thinking blocks in messages — they waste tokens and confuse the model
         }
 
         if (block.type === 'text') {
@@ -329,6 +349,24 @@ export class QueryEngine {
             continue
           }
 
+          // Skill allowedTools enforcement
+          const skillAllowed = sharedState.skillAllowedTools as string[] | undefined
+          if (skillAllowed && !skillAllowed.includes(toolName)) {
+            toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: `Tool blocked: current skill restricts tools to [${skillAllowed.join(', ')}]. "${toolName}" is not allowed.`, is_error: true })
+            if (!this.config.headless) console.log(theme.warning(`Blocked by skill restriction.`))
+            continue
+          }
+
+          // Fire before_tool_call hook (before permission to avoid wasting user's time)
+          if (this.config.hookRunner) {
+            const hookResult = await this.config.hookRunner.run('before_tool_call', { tool: toolName, input: JSON.stringify(toolInput) })
+            if (hookResult.blocked) {
+              toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: `Tool blocked by hook: ${hookResult.stderr || hookResult.stdout || 'hook returned non-zero'}`, is_error: true })
+              if (!this.config.headless) console.log(theme.warning(`Blocked by hook.`))
+              continue
+            }
+          }
+
           // Permission check
           const allowed = await this.permissionGate.check(toolName, toolInput, tool.isReadOnly)
           if (!allowed) {
@@ -349,7 +387,10 @@ export class QueryEngine {
           try {
             result = await tool.call(toolInput, toolContext)
           } catch (err) {
-            result = { output: `Tool crashed: ${(err as Error).message}`, isError: true }
+            const errMsg = (err as Error).message
+            result = { output: `Tool crashed: ${errMsg}`, isError: true }
+            this.config.wire?.emit('error', { tool: toolName, message: errMsg })
+            this.config.hookRunner?.run('on_error', { tool: toolName, error: errMsg }).catch(() => {})
           }
           if (!this.config.headless) {
             spinner.stop()
@@ -357,6 +398,9 @@ export class QueryEngine {
           }
           this.config.onToolResult?.(toolName, result)
           this.config.wire?.emit('tool_result', { name: toolName, output: result.output, isError: result.isError })
+
+          // Fire after_tool_call hook
+          this.config.hookRunner?.run('after_tool_call', { tool: toolName, output: result.output.slice(0, 500), isError: String(!!result.isError) }).catch(() => {})
 
           // Handle plan mode toggles
           if (toolName === 'EnterPlanMode') this.config.planMode = true
@@ -380,11 +424,27 @@ export class QueryEngine {
         }
       }
 
-      // Add assistant response to messages
+      // Add assistant response to messages (ensure at least one content block)
+      if (assistantBlocks.length === 0) {
+        assistantBlocks.push({ type: 'text', text: '' })
+      }
       currentMessages.push({ role: 'assistant', content: assistantBlocks })
 
       // If there were tool calls, add results and continue the loop
       if (toolResults.length > 0) {
+        // Show grouped tool summary when multiple tools were called
+        const toolUseCount = assistantBlocks.filter(b => b.type === 'tool_use').length
+        if (!this.config.headless && toolUseCount > 1) {
+          const toolCalls: ToolCall[] = assistantBlocks
+            .filter(b => b.type === 'tool_use')
+            .map(b => ({ id: (b as { id: string }).id, name: (b as { name: string }).name, input: (b as { input: Record<string, unknown> }).input }))
+          const toolSummaryItems = toolCalls.map(tc => {
+              const tr = toolResults.find(r => r.type === 'tool_result' && r.tool_use_id === tc.id)
+              return { name: tc.name, input: tc.input, output: tr ? (tr as { content: string }).content : '' }
+            })
+          const grouped = formatGroupedTools(toolSummaryItems)
+          if (grouped) console.log(grouped)
+        }
         currentMessages.push({ role: 'user', content: toolResults })
         continueLoop = true
       }
@@ -398,6 +458,17 @@ export class QueryEngine {
         break
       }
     }
+    // Clear skill tool restrictions after run completes
+    delete sharedState.skillAllowedTools
+
+    // Emit status wire event
+    this.config.wire?.emit('status', {
+      loopCount,
+      messageCount: currentMessages.length,
+      inputTokens: this.config.tokenCounter.totalInput,
+      outputTokens: this.config.tokenCounter.totalOutput,
+    })
+
     return { response: lastAssistant, messages: currentMessages }
   }
 }
@@ -450,17 +521,12 @@ export class BackgroundAgentManager {
 
 // Sub-agent types and function
 import { getAgentType, type AgentType } from '../tools/agentTypes.js'
+import { resolveModel as resolveModelAlias } from '../utils/config.js'
 
 export interface SubAgentOptions {
   subagentType?: string
   model?: string
   runInBackground?: boolean
-}
-
-const MODEL_MAP: Record<string, string> = {
-  'sonnet': 'claude-sonnet-4-20250514',
-  'opus': 'claude-opus-4-20250514',
-  'haiku': 'claude-haiku-3-5-20241022',
 }
 
 function buildSubEngine(
@@ -484,7 +550,7 @@ function buildSubEngine(
   }
 
   const resolvedModel = modelOverride
-    ? MODEL_MAP[modelOverride] || modelOverride
+    ? resolveModelAlias(modelOverride, parentEngine['config'].model)
     : parentEngine['config'].model
 
   return new QueryEngine({
@@ -547,13 +613,22 @@ export async function runSubAgent(
   const parentRegistry = engine['config'].toolRegistry as ToolRegistry
   const subEngine = buildSubEngine(engine, agentType, parentRegistry, options?.model)
 
+  // Emit agent_start wire event
+  const agentId = `agent-${Date.now()}`
+  engine['config'].wire?.emit('agent_start', { id: agentId, description: _description, type: agentType?.name })
+
   const messages: Message[] = [{ role: 'user', content: prompt }]
   const { response } = await subEngine.run(messages, context.workingDir)
 
-  if (typeof response.content === 'string') return response.content
+  const text = typeof response.content === 'string'
+    ? response.content
+    : response.content
+      .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
+      .map(b => b.text)
+      .join('\n')
 
-  return response.content
-    .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
-    .map(b => b.text)
-    .join('\n')
+  // Emit agent_done wire event
+  engine['config'].wire?.emit('agent_done', { id: agentId, description: _description, resultLength: text.length })
+
+  return text
 }

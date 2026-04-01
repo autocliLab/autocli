@@ -65,21 +65,58 @@ export class ContextManager {
   ): Promise<Message[]> {
     if (messages.length <= 4) return messages
 
-    // Find a safe split point: after a complete tool_use + tool_result pair
+    // Find a safe split point: at a user message with string content (not tool results)
     let splitIdx = Math.floor(messages.length / 2)
+    let foundSplit = false
     for (let i = splitIdx; i > 2; i--) {
       const msg = messages[i]
       if (msg.role === 'user' && typeof msg.content === 'string') {
         splitIdx = i
+        foundSplit = true
         break
       }
     }
+    // If no string user message found searching backward, try forward
+    if (!foundSplit) {
+      for (let i = splitIdx; i < messages.length - 2; i++) {
+        const msg = messages[i]
+        if (msg.role === 'user' && typeof msg.content === 'string') {
+          splitIdx = i
+          foundSplit = true
+          break
+        }
+      }
+    }
+    // Last resort: find any user message boundary (after a tool_result block)
+    if (!foundSplit) {
+      for (let i = splitIdx; i > 2; i--) {
+        if (messages[i].role === 'user' && messages[i - 1]?.role === 'assistant') {
+          splitIdx = i
+          break
+        }
+      }
+    }
 
-    // Build text from old messages for summarization
+    // Build text from old messages for summarization (including tool call summaries)
     const oldMessages = messages.slice(0, splitIdx)
     const transcript = oldMessages
-      .filter(m => typeof m.content === 'string')
-      .map(m => `${m.role}: ${m.content}`)
+      .map(m => {
+        if (typeof m.content === 'string') {
+          return `${m.role}: ${m.content}`
+        }
+        // Summarize content blocks
+        const parts: string[] = []
+        for (const block of m.content) {
+          if (block.type === 'text') parts.push(block.text)
+          else if (block.type === 'tool_use') parts.push(`[Tool: ${block.name}]`)
+          else if (block.type === 'tool_result') {
+            const preview = block.content.slice(0, 200)
+            parts.push(`[Result: ${preview}${block.content.length > 200 ? '...' : ''}]`)
+          }
+        }
+        return parts.length > 0 ? `${m.role}: ${parts.join(' ')}` : ''
+      })
+      .filter(Boolean)
       .join('\n\n')
 
     if (!transcript.trim()) return this.fitToContext(messages)

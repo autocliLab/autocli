@@ -7,13 +7,15 @@ export const bashTool: ToolDefinition = {
   inputSchema: z.object({
     command: z.string().describe('The shell command to execute'),
     timeout: z.number().optional().describe('Timeout in milliseconds (default 120000)'),
+    run_in_background: z.boolean().optional().describe('Run command in background and return immediately'),
   }),
   isReadOnly: false,
 
   async call(input, context) {
-    const { command, timeout = 120_000 } = input as {
+    const { command, timeout = 120_000, run_in_background } = input as {
       command: string
       timeout?: number
+      run_in_background?: boolean
     }
 
     // Dangerous command patterns
@@ -38,6 +40,26 @@ export const bashTool: ToolDefinition = {
     }
 
     const effectiveCwd = (context.sharedState?.bashCwd as string) || context.workingDir
+
+    // Background execution via BackgroundTaskManager
+    if (run_in_background) {
+      try {
+        const { BackgroundTaskManager } = await import('../tasks/backgroundTask.js')
+        // Use shared bgTaskManager or create one
+        if (!context.sharedState) (context as { sharedState: Record<string, unknown> }).sharedState = {}
+        if (!context.sharedState!.bgTaskManager) {
+          context.sharedState!.bgTaskManager = new BackgroundTaskManager()
+        }
+        const mgr = context.sharedState!.bgTaskManager as InstanceType<typeof BackgroundTaskManager>
+        const result = mgr.create(command, effectiveCwd)
+        if ('error' in result) {
+          return { output: result.error, isError: true }
+        }
+        return { output: `Background task started: ${result.id} (pid: ${result.pid})\nUse TaskList to check status.` }
+      } catch (err) {
+        return { output: `Failed to start background task: ${(err as Error).message}`, isError: true }
+      }
+    }
 
     try {
       // Append pwd tracking to capture directory changes

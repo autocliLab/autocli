@@ -5,6 +5,7 @@ import { BrainWriter } from '../brain/writer.js'
 import { BrainDistiller } from '../brain/distiller.js'
 import { platform } from '../utils/platform.js'
 import { join } from 'path'
+import { renderMarkdown } from '../ui/markdown.js'
 
 const BRAIN_DIR = join(platform.configDir, 'brain')
 
@@ -46,7 +47,7 @@ export const brainCommand: CommandDefinition = {
 
       case 'show': {
         const distiller = new BrainDistiller(reader, writer)
-        return distiller.generateSummary()
+        return renderMarkdown(distiller.generateSummary())
       }
 
       case 'distill': {
