@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync } from 'fs'
-import { join } from 'path'
+import { join, basename } from 'path'
 import type { SkillDefinition, SkillMetadata } from './types.js'
 
 export class SkillLoader {
@@ -24,7 +24,12 @@ export class SkillLoader {
 
   private parseSkill(raw: string, filePath: string): SkillDefinition | undefined {
     const match = raw.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/)
-    if (!match) return undefined
+    if (!match) {
+      // File exists but has no valid frontmatter — load as content-only skill
+      const name = basename(filePath, '.md')
+      console.warn(`[SkillLoader] ${filePath}: missing or malformed frontmatter, loading as content-only skill "${name}"`)
+      return { name, description: '', content: raw, filePath }
+    }
 
     const frontmatter = match[1]
     const content = match[2].trim()

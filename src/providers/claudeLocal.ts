@@ -137,28 +137,36 @@ async function spawnAndCollect(
       reject(new Error(`Failed to spawn ${command}: ${err.message}`))
     })
 
-    // Use 'exit' instead of 'close' — 'close' waits for ALL stdio to close,
-    // which hangs when Claude CLI spawns child processes that inherit pipes.
-    proc.on('exit', () => {
-      // Short grace period to collect remaining buffered stdout
-      setTimeout(() => {
-        // Flush remaining buffer
-        if (buffer.trim()) {
-          try {
-            const event = JSON.parse(buffer.trim())
-            const text = parseEvent(event)
-            if (text) {
-              collectedText += text
-              onText?.(text)
-            }
-          } catch {
-            collectedText += buffer.trim()
-            onText?.(buffer.trim())
+    // Flush helper — drains any partial line left in the buffer
+    const flushBuffer = () => {
+      if (buffer.trim()) {
+        try {
+          const event = JSON.parse(buffer.trim())
+          const text = parseEvent(event)
+          if (text) {
+            collectedText += text
+            onText?.(text)
           }
-          buffer = ''
+        } catch {
+          collectedText += buffer.trim()
+          onText?.(buffer.trim())
         }
-        resolve(collectedText)
-      }, 300)
+        buffer = ''
+      }
+    }
+
+    // 'close' fires after all stdio streams have been closed, guaranteeing
+    // that every stdout 'data' event has already been processed.  We use
+    // stdout's own 'end' event so we never need a hardcoded setTimeout.
+    proc.stdout?.on('end', () => {
+      flushBuffer()
+    })
+
+    // 'close' fires after all stdio is closed — resolve here so we don't
+    // resolve before the last stdout bytes arrive.
+    proc.on('close', () => {
+      flushBuffer()
+      resolve(collectedText)
     })
   })
 }

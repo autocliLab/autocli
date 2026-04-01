@@ -16,7 +16,7 @@ export function zodToJsonSchema(schema: ZodType<unknown>): Record<string, unknow
       for (const [key, value] of Object.entries(shape)) {
         properties[key] = zodToJsonSchema(value)
         const innerDef = (value as unknown as { _def: Record<string, unknown> })._def
-        if (innerDef.typeName !== 'ZodOptional') {
+        if (innerDef.typeName !== 'ZodOptional' && innerDef.typeName !== 'ZodDefault' && innerDef.typeName !== 'ZodNullable') {
           required.push(key)
         }
       }

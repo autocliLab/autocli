@@ -37,12 +37,21 @@ export async function startHeadless(port: number): Promise<void> {
 
   const engine = new QueryEngine(engineConfig)
 
-  // Set global engine so sub-agents work in headless mode
-  setGlobalEngine(engine)
-
   const secret = config.remoteSecret || randomUUID()
   const server = new RemoteServer(engine, engineConfig, tokenCounter, secret, config.remoteSecret)
-  server.start(port)
+
+  try {
+    server.start(port)
+  } catch (err) {
+    const msg = (err as NodeJS.ErrnoException).code === 'EADDRINUSE'
+      ? `Port ${port} is already in use. Choose a different port with --port.`
+      : `Failed to start server: ${(err as Error).message}`
+    console.error(theme.error(msg))
+    process.exit(1)
+  }
+
+  // Set global engine after all config is populated and server is running
+  setGlobalEngine(engine)
 
   console.log(theme.bold('autocli — Headless Mode'))
   console.log(theme.dim(`Port: ${port}`))
