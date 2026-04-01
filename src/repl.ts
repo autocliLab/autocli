@@ -23,6 +23,7 @@ import type { Message, CommandResult } from './commands/types.js'
 import type { HookEvent } from './hooks/types.js'
 import { join } from 'path'
 import { loadClaudeMdFiles } from './memory/claudeMd.js'
+import { runMemoryExtraction } from './memory/autoExtract.js'
 
 let globalEngine: QueryEngine | null = null
 export function getGlobalEngine(): QueryEngine | null {
@@ -117,6 +118,7 @@ export async function startRepl(options: {
   console.log()
 
   // REPL loop
+  let turnCount = 0
   while (true) {
     const input = await readInput(theme.info('> '))
 
@@ -207,6 +209,21 @@ export async function startRepl(options: {
     session.totalCost = tokenCounter.totalCost
     session.totalTokens = { input: tokenCounter.totalInput, output: tokenCounter.totalOutput }
     sessionStore.save(session)
+
+    // Auto-extract memories every 5 turns
+    turnCount++
+    if (turnCount % 5 === 0 && messages.length > 0) {
+      runMemoryExtraction(messages, memoryManager, async (prompt) => {
+        const { response } = await engine.run(
+          [{ role: 'user', content: prompt }],
+          workingDir,
+        )
+        if (typeof response.content === 'string') return response.content
+        return response.content
+          .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
+          .map(b => b.text).join('\n')
+      }).catch(() => {}) // Silent failure
+    }
 
     console.log()
   }
