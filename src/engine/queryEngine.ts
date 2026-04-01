@@ -83,8 +83,6 @@ export class QueryEngine {
         break
       }
 
-      if (!this.config.headless) spinner.start()
-
       // Convert internal messages to Anthropic API format
       const apiMessages: Anthropic.MessageParam[] = currentMessages.map(m => {
         if (typeof m.content === 'string') {
@@ -113,7 +111,17 @@ export class QueryEngine {
         return { role: m.role as 'user' | 'assistant', content: blocks }
       })
 
-      const response = await this.client.messages.create({
+      if (!this.config.headless) spinner.start()
+
+      let spinnerStopped = false
+      const stopSpinnerOnce = () => {
+        if (!spinnerStopped && !this.config.headless) {
+          spinner.stop()
+          spinnerStopped = true
+        }
+      }
+
+      const stream = this.client.messages.stream({
         model: this.config.model,
         max_tokens: this.config.maxTokens || 8192,
         system: systemPrompt,
@@ -121,7 +129,20 @@ export class QueryEngine {
         tools: tools as Anthropic.Tool[],
       })
 
-      if (!this.config.headless) spinner.stop()
+      stream.on('text', (text) => {
+        stopSpinnerOnce()
+        if (!this.config.headless) {
+          process.stdout.write(text)
+        }
+        this.config.onText?.(text)
+      })
+
+      const response = await stream.finalMessage()
+      stopSpinnerOnce() // In case no text was emitted (pure tool_use response)
+
+      if (!this.config.headless) {
+        process.stdout.write('\n')
+      }
 
       // Track tokens
       this.config.tokenCounter.add({
@@ -136,10 +157,7 @@ export class QueryEngine {
       for (const block of response.content) {
         if (block.type === 'text') {
           assistantBlocks.push({ type: 'text', text: block.text })
-          if (!this.config.headless) {
-            console.log(renderMarkdown(block.text))
-          }
-          this.config.onText?.(block.text)
+          // Text already streamed above — don't re-render
         }
 
         if (block.type === 'tool_use') {
