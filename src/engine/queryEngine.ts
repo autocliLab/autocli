@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
-import type { ToolRegistry } from '../tools/registry.js'
+import { ToolRegistry } from '../tools/registry.js'
 import type { TokenCounter } from './tokenCounter.js'
 import type { ContextManager } from './contextManager.js'
 import type { ToolContext, ToolResult } from '../tools/types.js'
@@ -211,11 +211,59 @@ export class QueryEngine {
   }
 }
 
-// Sub-agent function (used by agent tool)
+// Sub-agent types and function
+import { getAgentType, type AgentType } from '../tools/agentTypes.js'
+
+export interface SubAgentOptions {
+  subagentType?: string
+  model?: string
+  runInBackground?: boolean
+}
+
+const MODEL_MAP: Record<string, string> = {
+  'sonnet': 'claude-sonnet-4-20250514',
+  'opus': 'claude-opus-4-20250514',
+  'haiku': 'claude-haiku-3-5-20241022',
+}
+
+function buildSubEngine(
+  parentEngine: QueryEngine,
+  agentType: AgentType | undefined,
+  parentRegistry: ToolRegistry,
+  modelOverride?: string,
+): QueryEngine {
+  const subRegistry = new ToolRegistry()
+
+  if (agentType?.allowedTools) {
+    for (const tool of parentRegistry.list()) {
+      if (agentType.allowedTools.includes(tool.name)) {
+        subRegistry.register(tool)
+      }
+    }
+  } else {
+    for (const tool of parentRegistry.list()) {
+      subRegistry.register(tool)
+    }
+  }
+
+  const resolvedModel = modelOverride
+    ? MODEL_MAP[modelOverride] || modelOverride
+    : parentEngine['config'].model
+
+  return new QueryEngine({
+    ...parentEngine['config'],
+    model: resolvedModel,
+    toolRegistry: subRegistry,
+    systemPrompt: agentType?.systemPrompt,
+    headless: true,
+  })
+}
+
 export async function runSubAgent(
   prompt: string,
   _description: string,
   context: ToolContext,
+  options?: SubAgentOptions,
 ): Promise<string> {
   const { getGlobalEngine } = await import('../repl.js')
   const engine = getGlobalEngine()
@@ -224,8 +272,15 @@ export async function runSubAgent(
     return 'Error: query engine not initialized'
   }
 
+  const agentType = options?.subagentType
+    ? getAgentType(options.subagentType)
+    : getAgentType('general-purpose')
+
+  const parentRegistry = engine['config'].toolRegistry as ToolRegistry
+  const subEngine = buildSubEngine(engine, agentType, parentRegistry, options?.model)
+
   const messages: Message[] = [{ role: 'user', content: prompt }]
-  const { response } = await engine.run(messages, context.workingDir)
+  const { response } = await subEngine.run(messages, context.workingDir)
 
   if (typeof response.content === 'string') return response.content
 
