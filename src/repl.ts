@@ -24,6 +24,9 @@ import { sessionsCommand } from './commands/sessions.js'
 import { reviewCommand } from './commands/review.js'
 import { initCommand } from './commands/init.js'
 import { exportCommand } from './commands/export.js'
+import { planCommand } from './commands/plan.js'
+import { modelCommand } from './commands/model.js'
+import { yoloCommand } from './commands/yolo.js'
 import type { Message, CommandResult } from './commands/types.js'
 import type { HookEvent } from './hooks/types.js'
 import { join } from 'path'
@@ -89,6 +92,9 @@ export async function startRepl(options: {
   commandRegistry.register(reviewCommand)
   commandRegistry.register(initCommand)
   commandRegistry.register(exportCommand)
+  commandRegistry.register(planCommand)
+  commandRegistry.register(modelCommand)
+  commandRegistry.register(yoloCommand)
 
   const skillsList = skillLoader.list()
   const skillsPrompt = skillsList.length > 0
@@ -226,12 +232,45 @@ export async function startRepl(options: {
       if (result.type === 'prompt') {
         messages.push({ role: 'user', content: result.prompt })
       } else if (result.type === 'compact') {
-        messages = contextManager.fitToContext(messages)
+        console.log(theme.dim('Compacting with LLM summarization...'))
+        messages = await contextManager.compactWithLLM(messages, async (prompt) => {
+          const { response } = await engine.run(
+            [{ role: 'user', content: prompt }],
+            workingDir,
+          )
+          if (typeof response.content === 'string') return response.content
+          return response.content
+            .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
+            .map(b => b.text).join('\n')
+        })
         console.log(theme.success(`Context compacted to ${messages.length} messages`))
         continue
       } else if (result.type === 'clear') {
         messages = []
         console.log(theme.success('Conversation cleared.'))
+        continue
+      } else if (result.type === 'plan_toggle') {
+        const currentPlan = engine['config'].planMode || false
+        engine['config'].planMode = !currentPlan
+        console.log(engine['config'].planMode
+          ? theme.warning('Plan mode ON — write tools disabled.')
+          : theme.success('Plan mode OFF — all tools enabled.'))
+        continue
+      } else if (result.type === 'yolo_toggle') {
+        const currentMode = engine['config'].permissionConfig?.mode
+        const newMode = currentMode === 'auto-approve' ? 'default' : 'auto-approve'
+        if (engine['config'].permissionConfig) {
+          engine['config'].permissionConfig.mode = newMode
+        }
+        engine['permissionGate']['config'].mode = newMode
+        console.log(newMode === 'auto-approve'
+          ? theme.warning('YOLO mode ON — all tools auto-approved.')
+          : theme.success('YOLO mode OFF — approval required for write tools.'))
+        continue
+      } else if (result.type === 'model_switch') {
+        engine['config'].model = result.model
+        statusLine.set('model', result.model.split('-').slice(0, 2).join(' '))
+        console.log(theme.success(`Model switched to ${result.model}`))
         continue
       } else {
         console.log(result.text)
@@ -262,6 +301,22 @@ export async function startRepl(options: {
 
       // Update status
       statusLine.set('tokens', tokenCounter.formatUsage())
+
+      // Auto-compact if context is getting too large
+      if (contextManager.needsCompaction(messages)) {
+        console.log(theme.dim('Auto-compacting context...'))
+        messages = await contextManager.compactWithLLM(messages, async (prompt) => {
+          const { response: compactResp } = await engine.run(
+            [{ role: 'user', content: prompt }],
+            workingDir,
+          )
+          if (typeof compactResp.content === 'string') return compactResp.content
+          return compactResp.content
+            .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
+            .map(b => b.text).join('\n')
+        }).catch(() => contextManager.fitToContext(messages))
+        console.log(theme.dim(`Compacted to ${messages.length} messages`))
+      }
     } catch (err) {
       if ((err as Error).name === 'AbortError' || currentAbortController?.signal.aborted) {
         // User cancelled — remove the pending user message

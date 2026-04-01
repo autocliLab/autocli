@@ -3,6 +3,9 @@ export type CommandResult =
   | { type: 'prompt'; prompt: string }
   | { type: 'compact' }
   | { type: 'clear' }
+  | { type: 'plan_toggle' }
+  | { type: 'yolo_toggle' }
+  | { type: 'model_switch'; model: string }
 
 export interface CommandDefinition {
   name: string

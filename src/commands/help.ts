@@ -18,6 +18,9 @@ export const helpCommand: CommandDefinition = {
       '  /review      Review code changes (staged or unstaged)',
       '  /init        Initialize .claude/ directory and CLAUDE.md',
       '  /export      Export conversation to markdown file',
+      '  /plan        Toggle plan mode (read-only)',
+      '  /model <name> Switch model (sonnet, opus, haiku)',
+      '  /yolo        Toggle auto-approve mode',
       '',
       theme.dim('Type a message to chat, or /command to run a command.'),
     ].join('\n')

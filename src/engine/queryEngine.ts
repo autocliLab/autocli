@@ -65,6 +65,7 @@ export interface QueryEngineConfig {
   onToolResult?: (name: string, result: ToolResult) => void
   headless?: boolean
   maxSessionCost?: number
+  planMode?: boolean
 }
 
 async function withRetry<T>(
@@ -261,6 +262,13 @@ export class QueryEngine {
             continue
           }
 
+          // Plan mode enforcement
+          if (this.config.planMode && !tool.isReadOnly) {
+            toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: 'Tool blocked: plan mode is active (read-only). Use ExitPlanMode to return to full access.', is_error: true })
+            if (!this.config.headless) console.log(theme.warning('Blocked (plan mode).'))
+            continue
+          }
+
           // Permission check
           const allowed = await this.permissionGate.check(toolName, toolInput, tool.isReadOnly)
           if (!allowed) {
@@ -282,6 +290,19 @@ export class QueryEngine {
             console.log(formatToolResult(toolName, result.output, result.isError))
           }
           this.config.onToolResult?.(toolName, result)
+
+          // Handle plan mode toggles
+          if (toolName === 'EnterPlanMode') this.config.planMode = true
+          if (toolName === 'ExitPlanMode') this.config.planMode = false
+
+          // Cap tool result at 100KB
+          const MAX_RESULT_BYTES = 100_000
+          if (result.output.length > MAX_RESULT_BYTES) {
+            result = {
+              output: result.output.slice(0, MAX_RESULT_BYTES) + `\n\n[Output truncated: ${result.output.length} chars exceeds ${MAX_RESULT_BYTES} limit]`,
+              isError: result.isError,
+            }
+          }
 
           toolResults.push({
             type: 'tool_result',

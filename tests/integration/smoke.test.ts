@@ -17,9 +17,9 @@ describe('Integration: all subsystems initialize', () => {
     const reg = new ToolRegistry()
     registerAllTools(reg)
     const tools = reg.list()
-    expect(tools.length).toBe(7)
+    expect(tools.length).toBe(11)
     expect(tools.map(t => t.name).sort()).toEqual([
-      'Agent', 'Bash', 'Edit', 'Glob', 'Grep', 'Read', 'Write',
+      'Agent', 'AskUser', 'Bash', 'Edit', 'EnterPlanMode', 'ExitPlanMode', 'Glob', 'Grep', 'Read', 'Think', 'Write',
     ])
   })
 
@@ -41,7 +41,7 @@ describe('Integration: all subsystems initialize', () => {
     const hookRunner = new HookRunner([])
     const permissionGate = new PermissionGate({ mode: 'default', rules: [], alwaysAllow: new Set() })
 
-    expect(toolRegistry.list().length).toBe(7)
+    expect(toolRegistry.list().length).toBe(11)
     expect(tokenCounter.totalCost).toBe(0)
     expect(contextManager.estimateTokens('hello')).toBeGreaterThan(0)
     expect(sessionStore.list()).toBeDefined()
