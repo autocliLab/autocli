@@ -1,0 +1,12 @@
+export type WireEventType =
+  | 'text'
+  | 'text_done'
+  | 'tool_call'
+  | 'tool_result'
+  | 'approval_req'
+  | 'approval_res'
+  | 'status'
+  | 'error'
+  | 'agent_start'
+  | 'agent_done'
+  | 'user_input'

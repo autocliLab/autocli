@@ -11,6 +11,10 @@ export interface AppConfig {
   remotePort: number
   remoteSecret?: string
   maxSessionCost: number  // in dollars
+  provider: 'anthropic' | 'openai'
+  openaiApiKey?: string
+  openaiBaseUrl?: string
+  licenseKey?: string
 }
 
 const DEFAULT_CONFIG: AppConfig = {
@@ -20,6 +24,7 @@ const DEFAULT_CONFIG: AppConfig = {
   hooks: [],
   remotePort: 3456,
   maxSessionCost: 5.00,
+  provider: 'anthropic',
 }
 
 export function loadConfig(): AppConfig {

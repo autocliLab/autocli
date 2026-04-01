@@ -21,6 +21,9 @@ export const helpCommand: CommandDefinition = {
       '  /plan        Toggle plan mode (read-only)',
       '  /model <name> Switch model (sonnet, opus, haiku)',
       '  /yolo        Toggle auto-approve mode',
+      '  /tasks       List background subprocess tasks',
+      '  /skills      List available skills',
+      '  /activate <key> Activate license key',
       '',
       theme.dim('Type a message to chat, or /command to run a command.'),
     ].join('\n')

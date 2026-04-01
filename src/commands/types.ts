@@ -6,6 +6,7 @@ export type CommandResult =
   | { type: 'plan_toggle' }
   | { type: 'yolo_toggle' }
   | { type: 'model_switch'; model: string }
+  | { type: 'list_bg_tasks' }
 
 export interface CommandDefinition {
   name: string

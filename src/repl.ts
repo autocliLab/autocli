@@ -33,6 +33,11 @@ import { join } from 'path'
 import { loadClaudeMdFiles } from './memory/claudeMd.js'
 import { runMemoryExtraction } from './memory/autoExtract.js'
 import { buildGitContext, buildProjectHint } from './git/gitContext.js'
+import { Wire } from './wire/wire.js'
+import { BackgroundTaskManager } from './tasks/backgroundTask.js'
+import { tasksCommand } from './commands/tasks.js'
+import { skillsCommand } from './commands/skills.js'
+import { activateCommand } from './commands/activate.js'
 
 let globalEngine: QueryEngine | null = null
 export function getGlobalEngine(): QueryEngine | null {
@@ -95,6 +100,9 @@ export async function startRepl(options: {
   commandRegistry.register(planCommand)
   commandRegistry.register(modelCommand)
   commandRegistry.register(yoloCommand)
+  commandRegistry.register(tasksCommand)
+  commandRegistry.register(skillsCommand)
+  commandRegistry.register(activateCommand)
 
   const skillsList = skillLoader.list()
   const skillsPrompt = skillsList.length > 0
@@ -122,7 +130,13 @@ export async function startRepl(options: {
     gitContext,
     projectHint,
     maxSessionCost: config.maxSessionCost,
+    provider: config.provider,
+    openaiApiKey: config.openaiApiKey,
+    openaiBaseUrl: config.openaiBaseUrl,
   })
+  const wire = new Wire()
+  const bgTaskManager = new BackgroundTaskManager()
+
   globalEngine = engine
   backgroundManager = new BackgroundAgentManager()
 
@@ -144,6 +158,11 @@ export async function startRepl(options: {
   let session = options.resume
     ? sessionStore.load(options.resume) || sessionStore.getLatest()
     : undefined
+
+  if (session) {
+    wire.enableFileLog(join(platform.configDir, 'sessions', `${session.id}.wire.jsonl`))
+  }
+  engine['config'].wire = wire
 
   let messages: Message[] = session?.messages || []
 
@@ -271,6 +290,18 @@ export async function startRepl(options: {
         engine['config'].model = result.model
         statusLine.set('model', result.model.split('-').slice(0, 2).join(' '))
         console.log(theme.success(`Model switched to ${result.model}`))
+        continue
+      } else if (result.type === 'list_bg_tasks') {
+        const tasks = bgTaskManager.list()
+        if (tasks.length === 0) {
+          console.log(theme.dim('No background tasks running.'))
+        } else {
+          for (const t of tasks) {
+            const status = t.status === 'running' ? theme.info('▶') : t.status === 'completed' ? theme.success('✓') : theme.error('✗')
+            const elapsed = Math.round((Date.now() - t.startedAt) / 1000)
+            console.log(`  ${status} ${t.id} (${elapsed}s) ${theme.dim(t.command.slice(0, 60))}`)
+          }
+        }
         continue
       } else {
         console.log(result.text)

@@ -66,6 +66,10 @@ export interface QueryEngineConfig {
   headless?: boolean
   maxSessionCost?: number
   planMode?: boolean
+  provider?: 'anthropic' | 'openai'
+  openaiApiKey?: string
+  openaiBaseUrl?: string
+  wire?: import('../wire/wire.js').Wire
 }
 
 async function withRetry<T>(
@@ -195,26 +199,70 @@ export class QueryEngine {
         }
       }
 
-      const response = await withRetry(async () => {
-        const s = this.client.messages.stream({
-          model: this.config.model,
-          max_tokens: this.config.maxTokens || 8192,
-          system: systemPrompt,
-          messages: apiMessages,
-          tools: tools as Anthropic.Tool[],
-        })
+      let response: Anthropic.Message
 
-        s.on('text', (text) => {
-          stopSpinnerOnce()
-          if (!this.config.headless) {
-            process.stdout.write(text)
+      if (this.config.provider === 'openai') {
+        const { callOpenAI } = await import('../providers/openai.js')
+        stopSpinnerOnce()
+        const oaiResult = await withRetry(async () => {
+          return await callOpenAI({
+            apiKey: this.config.openaiApiKey || this.config.apiKey,
+            baseUrl: this.config.openaiBaseUrl,
+            model: this.config.model,
+            maxTokens: this.config.maxTokens || 8192,
+            system: systemPrompt,
+            messages: apiMessages as Array<{ role: string; content: unknown }>,
+            tools: tools as Array<{ name: string; description: string; input_schema: Record<string, unknown> }>,
+          })
+        }, 3, !!this.config.headless)
+
+        // Emit text for OpenAI response
+        for (const block of oaiResult.content) {
+          if (block.type === 'text') {
+            if (!this.config.headless) process.stdout.write(block.text)
+            this.config.onText?.(block.text)
           }
-          this.config.onText?.(text)
-        })
+        }
 
-        return await s.finalMessage()
-      }, 3, !!this.config.headless)
-      stopSpinnerOnce() // In case no text was emitted (pure tool_use response)
+        // Wrap into Anthropic.Message shape for uniform downstream handling
+        response = {
+          id: `oai-${Date.now()}`,
+          type: 'message',
+          role: 'assistant',
+          model: this.config.model,
+          stop_reason: oaiResult.content.some(b => b.type === 'tool_use') ? 'tool_use' : 'end_turn',
+          stop_sequence: null,
+          content: oaiResult.content.map(b => {
+            if (b.type === 'tool_use') {
+              return { type: 'tool_use' as const, id: b.id, name: b.name, input: b.input }
+            }
+            return { type: 'text' as const, text: b.text }
+          }),
+          usage: { input_tokens: oaiResult.usage.input_tokens, output_tokens: oaiResult.usage.output_tokens, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        } as unknown as Anthropic.Message
+      } else {
+        response = await withRetry(async () => {
+          const s = this.client.messages.stream({
+            model: this.config.model,
+            max_tokens: this.config.maxTokens || 8192,
+            system: systemPrompt,
+            messages: apiMessages,
+            tools: tools as Anthropic.Tool[],
+          })
+
+          s.on('text', (text) => {
+            stopSpinnerOnce()
+            if (!this.config.headless) {
+              process.stdout.write(text)
+            }
+            this.config.onText?.(text)
+            this.config.wire?.emit('text', { text })
+          })
+
+          return await s.finalMessage()
+        }, 3, !!this.config.headless)
+        stopSpinnerOnce() // In case no text was emitted (pure tool_use response)
+      }
 
       if (!this.config.headless) {
         process.stdout.write('\n')
@@ -253,6 +301,7 @@ export class QueryEngine {
             console.log(formatToolUse(toolName, toolInput))
           }
           this.config.onToolUse?.(toolName, toolInput)
+          this.config.wire?.emit('tool_call', { name: toolName, input: toolInput })
 
           // Execute tool
           const tool = this.config.toolRegistry.get(toolName)
@@ -290,6 +339,7 @@ export class QueryEngine {
             console.log(formatToolResult(toolName, result.output, result.isError))
           }
           this.config.onToolResult?.(toolName, result)
+          this.config.wire?.emit('tool_result', { name: toolName, output: result.output, isError: result.isError })
 
           // Handle plan mode toggles
           if (toolName === 'EnterPlanMode') this.config.planMode = true
