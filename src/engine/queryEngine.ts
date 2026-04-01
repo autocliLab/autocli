@@ -11,6 +11,7 @@ import { formatToolUse, formatToolResult, formatGroupedTools } from '../ui/toolR
 import { theme } from '../ui/theme.js'
 import { applyInlineMarkdown } from '../ui/streamMarkdown.js'
 import { StreamRenderer } from '../ui/stream.js'
+import { getLayout } from '../ui/fullscreen.js'
 
 const SYSTEM_PROMPT = `You are an expert coding assistant. You help users with software engineering tasks including writing code, debugging, refactoring, and explaining concepts.
 
@@ -69,9 +70,12 @@ export interface QueryEngineConfig {
   headless?: boolean
   maxSessionCost?: number
   planMode?: boolean
-  provider?: 'anthropic' | 'openai' | 'claude-local'
+  provider?: 'anthropic' | 'openai' | 'claude-local' | 'minimaxi-cn'
   openaiApiKey?: string
   openaiBaseUrl?: string
+  minimaxiApiKey?: string
+  minimaxiBaseUrl?: string
+  minimaxiModel?: string
   claudeLocalConfig?: import('../providers/claudeLocal.js').ClaudeLocalConfig
   wire?: import('../wire/wire.js').Wire
   hookRunner?: import('../hooks/hookRunner.js').HookRunner
@@ -94,7 +98,7 @@ async function withRetry<T>(
       if ((status === 429 || status === 529) && attempt < maxRetries) {
         const delay = Math.min(1000 * Math.pow(2, attempt), 30000) // exponential backoff, max 30s
         if (!headless) {
-          console.log(theme.warning(`Rate limited (${status}). Retrying in ${delay / 1000}s... (${attempt + 1}/${maxRetries})`))
+          getLayout().log(theme.warning(`Rate limited (${status}). Retrying in ${delay / 1000}s... (${attempt + 1}/${maxRetries})`))
         }
         await new Promise(resolve => setTimeout(resolve, delay))
         continue
@@ -118,6 +122,34 @@ export class QueryEngine {
       config.permissionConfig || { mode: 'default', rules: [], alwaysAllow: new Set() }
     )
   }
+
+  // ── Public accessors (avoids bracket-notation private access) ──
+
+  setHookRunner(hookRunner: QueryEngineConfig['hookRunner']): void { this.config.hookRunner = hookRunner }
+  setBgTaskManager(mgr: QueryEngineConfig['bgTaskManager']): void { this.config.bgTaskManager = mgr }
+  setWire(wire: QueryEngineConfig['wire']): void { this.config.wire = wire }
+  setPermissionWire(wire: QueryEngineConfig['wire']): void { (this.permissionGate as { wire?: unknown }).wire = wire }
+  setBrainContext(ctx: string): void { this.config.brainContext = ctx }
+
+  setModel(model: string): void { this.config.model = model }
+  getModel(): string { return this.config.model }
+  setProvider(provider: QueryEngineConfig['provider']): void { this.config.provider = provider }
+  getProvider(): string | undefined { return this.config.provider }
+
+  setPlanMode(on: boolean): void { this.config.planMode = on }
+  getPlanMode(): boolean { return this.config.planMode || false }
+
+  setPermissionMode(mode: 'default' | 'auto-approve' | 'deny-all'): void {
+    if (this.config.permissionConfig) this.config.permissionConfig.mode = mode
+    this.permissionGate.setMode(mode)
+  }
+  getPermissionMode(): string { return this.config.permissionConfig?.mode || 'default' }
+
+  getToolRegistry(): ToolRegistry { return this.config.toolRegistry }
+  getWire(): QueryEngineConfig['wire'] { return this.config.wire }
+
+  /** Expose config for sub-engine construction (used by buildSubEngine) */
+  getConfigSnapshot(): QueryEngineConfig { return { ...this.config } }
 
   buildSystemPrompt(workingDir: string): string {
     return [
@@ -165,7 +197,7 @@ export class QueryEngine {
 
       if (loopCount > maxLoops) {
         if (!this.config.headless) {
-          console.log(theme.warning(`Tool loop limit reached (${maxLoops}). Stopping.`))
+          getLayout().log(theme.warning(`Tool loop limit reached (${maxLoops}). Stopping.`))
         }
         break
       }
@@ -242,10 +274,16 @@ export class QueryEngine {
           }),
           usage: { input_tokens: localResult.usage.input_tokens, output_tokens: localResult.usage.output_tokens, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
         } as unknown as Anthropic.Message
-      } else if (this.config.provider === 'openai') {
+      } else if (this.config.provider === 'openai' || this.config.provider === 'minimaxi-cn') {
         const { callOpenAI, buildOpenAIConfig } = await import('../providers/openai.js')
         stopSpinnerOnce()
-        const oaiConfig = buildOpenAIConfig({ provider: 'openai', apiKey: this.config.openaiApiKey || this.config.apiKey, baseUrl: this.config.openaiBaseUrl, model: this.config.model })
+        const isMinimaxi = this.config.provider === 'minimaxi-cn'
+        const oaiConfig = buildOpenAIConfig({
+          provider: 'openai',
+          apiKey: isMinimaxi ? (this.config.minimaxiApiKey || this.config.apiKey) : (this.config.openaiApiKey || this.config.apiKey),
+          baseUrl: isMinimaxi ? (this.config.minimaxiBaseUrl || 'https://www.minimaxi.com/v1') : this.config.openaiBaseUrl,
+          model: isMinimaxi ? (this.config.minimaxiModel || 'miniMax-2.7') : this.config.model,
+        })
         const oaiResult = await withRetry(async () => {
           return await callOpenAI({
             apiKey: oaiConfig.apiKey,
@@ -263,7 +301,7 @@ export class QueryEngine {
           if (block.type === 'text') {
             if (!this.config.headless) {
               const formatted = block.text.split('\n').map(l => applyInlineMarkdown(l)).join('\n')
-              process.stdout.write(formatted)
+              getLayout().writeOutput(formatted)
             }
             // Capture raw text in streamRenderer so text_done wire event has content
             streamRenderer.capture(block.text)
@@ -341,12 +379,14 @@ export class QueryEngine {
       const assistantBlocks: ContentBlock[] = []
       const toolResults: ContentBlock[] = []
 
+      const layout = getLayout()
+
       for (const block of response.content) {
         if (block.type === 'thinking') {
           const thinkingText = (block as { thinking: string }).thinking || ''
           if (!this.config.headless && thinkingText) {
-            console.log(theme.dim('💭 Thinking...'))
-            console.log(theme.dim('  ' + thinkingText.slice(0, 200) + (thinkingText.length > 200 ? '...' : '')))
+            layout.log(theme.dim('💭 Thinking...'))
+            layout.log(theme.dim('  ' + thinkingText.slice(0, 200) + (thinkingText.length > 200 ? '...' : '')))
           }
           // Don't store thinking blocks in messages — they waste tokens and confuse the model
         }
@@ -362,12 +402,16 @@ export class QueryEngine {
           assistantBlocks.push({ type: 'tool_use', id: block.id, name: toolName, input: toolInput })
 
           if (!this.config.headless) {
-            console.log(formatToolUse(toolName, toolInput))
+            layout.log(formatToolUse(toolName, toolInput))
           }
           this.config.onToolUse?.(toolName, toolInput)
           this.config.wire?.emit('tool_call', { name: toolName, input: toolInput })
 
           // Execute tool
+          if (!this.config.toolRegistry) {
+            toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: 'Tool registry not initialized', is_error: true })
+            continue
+          }
           const tool = this.config.toolRegistry.get(toolName)
           if (!tool) {
             const errResult = { output: `Unknown tool: ${toolName}`, isError: true }
@@ -378,15 +422,16 @@ export class QueryEngine {
           // Plan mode enforcement
           if (this.config.planMode && !tool.isReadOnly) {
             toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: 'Tool blocked: plan mode is active (read-only). Use ExitPlanMode to return to full access.', is_error: true })
-            if (!this.config.headless) console.log(theme.warning('Blocked (plan mode).'))
+            if (!this.config.headless) layout.log(theme.warning('Blocked (plan mode).'))
             continue
           }
 
           // Skill allowedTools enforcement
+          // Set by Skill tool to restrict which tools the skill can use
           const skillAllowed = sharedState.skillAllowedTools as string[] | undefined
           if (skillAllowed && !skillAllowed.includes(toolName)) {
             toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: `Tool blocked: current skill restricts tools to [${skillAllowed.join(', ')}]. "${toolName}" is not allowed.`, is_error: true })
-            if (!this.config.headless) console.log(theme.warning(`Blocked by skill restriction.`))
+            if (!this.config.headless) layout.log(theme.warning(`Blocked by skill restriction.`))
             continue
           }
 
@@ -395,7 +440,7 @@ export class QueryEngine {
             const hookResult = await this.config.hookRunner.run('before_tool_call', { tool: toolName, input: JSON.stringify(toolInput) })
             if (hookResult.blocked) {
               toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: `Tool blocked by hook: ${hookResult.stderr || hookResult.stdout || 'hook returned non-zero'}`, is_error: true })
-              if (!this.config.headless) console.log(theme.warning(`Blocked by hook.`))
+              if (!this.config.headless) layout.log(theme.warning(`Blocked by hook.`))
               continue
             }
           }
@@ -405,7 +450,7 @@ export class QueryEngine {
           if (!allowed) {
             const denyResult = { output: 'Tool call denied by user.', isError: true }
             toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: denyResult.output, is_error: true })
-            if (!this.config.headless) console.log(theme.warning('Denied.'))
+            if (!this.config.headless) layout.log(theme.warning('Denied.'))
             continue
           }
 
@@ -427,7 +472,7 @@ export class QueryEngine {
           }
           if (!this.config.headless) {
             spinner.stop()
-            console.log(formatToolResult(toolName, result.output, result.isError))
+            layout.log(formatToolResult(toolName, result.output, result.isError))
           }
           this.config.onToolResult?.(toolName, result)
           this.config.wire?.emit('tool_result', { name: toolName, output: result.output, isError: result.isError })
@@ -476,7 +521,7 @@ export class QueryEngine {
               return { name: tc.name, input: tc.input, output: tr ? (tr as { content: string }).content : '' }
             })
           const grouped = formatGroupedTools(toolSummaryItems)
-          if (grouped) console.log(grouped)
+          if (grouped) layout.log(grouped)
         }
         currentMessages.push({ role: 'user', content: toolResults })
         continueLoop = true
@@ -521,9 +566,18 @@ export class BackgroundAgentManager {
   private agents = new Map<string, BackgroundAgent>()
 
   register(id: string, description: string): void {
+    if (this.agents.size >= 50) this.cleanup()
     this.agents.set(id, {
       id, description, status: 'running', notified: false, startedAt: Date.now(),
     })
+  }
+
+  cleanup(): void {
+    for (const [id, agent] of this.agents) {
+      if (agent.notified && (agent.status === 'completed' || agent.status === 'failed')) {
+        this.agents.delete(id)
+      }
+    }
   }
 
   get(id: string): BackgroundAgent | undefined {
@@ -584,17 +638,19 @@ function buildSubEngine(
     }
   }
 
+  const parentConfig = parentEngine.getConfigSnapshot()
+
   const resolvedModel = modelOverride
-    ? resolveModelAlias(modelOverride, parentEngine['config'].model)
-    : parentEngine['config'].model
+    ? resolveModelAlias(modelOverride, parentConfig.model)
+    : parentConfig.model
 
   // Resolve provider: explicit override > agent type default > parent
   const resolvedProvider = providerOverride
     || agentType?.provider
-    || parentEngine['config'].provider
+    || parentConfig.provider
 
   return new QueryEngine({
-    ...parentEngine['config'],
+    ...parentConfig,
     model: resolvedModel,
     provider: resolvedProvider,
     toolRegistry: subRegistry,
@@ -625,7 +681,7 @@ export async function runSubAgent(
       bgMgr.register(agentId, _description)
 
       // Fire and forget
-      const parentRegistry = engine['config'].toolRegistry as ToolRegistry
+      const parentRegistry = engine.getToolRegistry()
       const agentType = options?.subagentType
         ? getAgentType(options.subagentType)
         : getAgentType('general-purpose')
@@ -651,12 +707,12 @@ export async function runSubAgent(
     ? getAgentType(options.subagentType)
     : getAgentType('general-purpose')
 
-  const parentRegistry = engine['config'].toolRegistry as ToolRegistry
+  const parentRegistry = engine.getToolRegistry()
   const subEngine = buildSubEngine(engine, agentType, parentRegistry, options?.model, options?.provider)
 
   // Emit agent_start wire event
   const agentId = `agent-${Date.now()}`
-  engine['config'].wire?.emit('agent_start', { id: agentId, description: _description, type: agentType?.name })
+  engine.getWire()?.emit('agent_start', { id: agentId, description: _description, type: agentType?.name })
 
   const messages: Message[] = [{ role: 'user', content: prompt }]
   const { response } = await subEngine.run(messages, context.workingDir)
@@ -669,7 +725,7 @@ export async function runSubAgent(
       .join('\n')
 
   // Emit agent_done wire event
-  engine['config'].wire?.emit('agent_done', { id: agentId, description: _description, resultLength: text.length })
+  engine.getWire()?.emit('agent_done', { id: agentId, description: _description, resultLength: text.length })
 
   return text
 }

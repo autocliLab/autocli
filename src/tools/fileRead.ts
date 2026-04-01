@@ -29,6 +29,11 @@ export const fileReadTool: ToolDefinition = {
     const IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'gif', 'webp']
     if (IMAGE_EXTS.includes(ext)) {
       try {
+        const MAX_IMAGE_SIZE = 10 * 1024 * 1024 // 10MB
+        const stats = statSync(file_path)
+        if (stats.size > MAX_IMAGE_SIZE) {
+          return { output: `Image too large: ${(stats.size / 1024 / 1024).toFixed(1)}MB (max 10MB)` }
+        }
         const data = readFileSync(file_path)
         const base64 = data.toString('base64')
         const mimeType = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`

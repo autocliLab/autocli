@@ -3,6 +3,7 @@ import { readdirSync, existsSync, statSync } from 'fs'
 import { dirname, basename, join } from 'path'
 import { theme } from './theme.js'
 import { createVimState, handleVimKey, getModeIndicator, type VimMode } from './vim.js'
+import { getLayout } from './fullscreen.js'
 
 // Shared vim state so REPL can toggle it
 let vimModeEnabled = false
@@ -18,6 +19,13 @@ export function isVimMode(): boolean {
 }
 
 export async function readInput(prompt = '> ', history?: string[], commands?: string[]): Promise<string> {
+  const layout = getLayout()
+
+  // Position cursor on the input row if fullscreen is active
+  if (layout.isEntered()) {
+    layout.prepareInputRow()
+  }
+
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
@@ -53,6 +61,10 @@ export async function readInput(prompt = '> ', history?: string[], commands?: st
         vimKeypressHandler = null
       }
       rl.close()
+      // Clear the input row after submission
+      if (layout.isEntered()) {
+        layout.clearInputRow()
+      }
       resolve(result)
     }
 
@@ -136,6 +148,11 @@ export async function readInput(prompt = '> ', history?: string[], commands?: st
     }
 
     rl.on('close', () => {
+      // Ensure vim keypress handler is cleaned up even on unexpected close
+      if (vimKeypressHandler) {
+        process.stdin.removeListener('keypress', vimKeypressHandler)
+        vimKeypressHandler = null
+      }
       finish(lines.join('\n'))
     })
   })
