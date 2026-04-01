@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync } from 'fs'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
+import { logger } from '../utils/logger.js'
 import type { Session, SessionMetadata } from './types.js'
 
 export class SessionStore {
@@ -57,7 +58,7 @@ export class SessionStore {
         const meta = JSON.parse(readFileSync(metaPath, 'utf-8'))
         const lines = readFileSync(messagesPath, 'utf-8').trim().split('\n').filter(Boolean)
         const messages = lines
-          .map(line => { try { return JSON.parse(line) } catch { return null } })
+          .map((line, idx) => { try { return JSON.parse(line) } catch (err) { logger.warn('Failed to parse session message line', { sessionId: id, line: idx, error: (err as Error).message }); return null } })
           .filter((m): m is NonNullable<typeof m> => m !== null)
         return { ...meta, messages }
       } catch {

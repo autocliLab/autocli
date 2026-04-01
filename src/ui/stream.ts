@@ -33,6 +33,10 @@ export class StreamRenderer {
     return this.buffer
   }
 
+  hasContent(): boolean {
+    return this.buffer.length > 0
+  }
+
   newline(): void {
     if (this.writeToStdout) {
       const layout = getLayout()

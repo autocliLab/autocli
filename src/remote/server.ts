@@ -6,6 +6,9 @@ import type { Message } from '../commands/types.js'
 import { theme } from '../ui/theme.js'
 import type { OpenAIMessage } from '../providers/openai.js'
 import { WsHandler } from './wsHandler.js'
+import { SessionStore } from '../session/sessionStore.js'
+import { platform } from '../utils/platform.js'
+import { join } from 'path'
 
 interface RemoteSession {
   id: string
@@ -39,7 +42,8 @@ export class RemoteServer {
     this.engineConfig = engineConfig
     this.tokenCounter = tokenCounter
     this.auth = new RemoteAuth(secret, apiKey)
-    this.wsHandler = new WsHandler(this.auth, this.engineConfig)
+    const sessionStore = new SessionStore(join(platform.configDir, 'sessions'))
+    this.wsHandler = new WsHandler(this.auth, this.engineConfig, sessionStore)
   }
 
   start(port: number): void {
@@ -248,6 +252,7 @@ export class RemoteServer {
   }
 
   stop(): void {
+    this.wsHandler.destroy()
     this.server?.stop()
   }
 

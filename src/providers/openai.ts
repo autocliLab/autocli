@@ -20,6 +20,8 @@ export async function callOpenAI(params: {
   system: string
   messages: Array<{ role: string; content: unknown }>
   tools: Array<{ name: string; description: string; input_schema: Record<string, unknown> }>
+  onText?: (text: string) => void
+  stream?: boolean
 }): Promise<ProviderMessage> {
   const baseUrl = params.baseUrl || 'https://api.openai.com/v1'
 
@@ -82,6 +84,7 @@ export async function callOpenAI(params: {
     model: params.model,
     max_tokens: params.maxTokens,
     messages: openaiMessages,
+    stream: params.stream ?? false,
   }
   if (openaiTools.length > 0) body.tools = openaiTools
 
@@ -99,6 +102,80 @@ export async function callOpenAI(params: {
     throw new Error(`OpenAI API error ${res.status}: ${text}`)
   }
 
+  // Streaming mode: parse SSE chunks
+  if (params.stream && res.body) {
+    const content: ProviderMessage['content'] = []
+    let fullText = ''
+    const toolCallBuffers = new Map<number, { id: string; name: string; args: string }>()
+    let inputTokens = 0
+    let outputTokens = 0
+
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue
+        const data = line.slice(6).trim()
+        if (data === '[DONE]') continue
+
+        try {
+          const chunk = JSON.parse(data) as {
+            choices?: Array<{
+              delta?: {
+                content?: string
+                tool_calls?: Array<{ index: number; id?: string; function?: { name?: string; arguments?: string } }>
+              }
+            }>
+            usage?: { prompt_tokens: number; completion_tokens: number }
+          }
+
+          if (chunk.usage) {
+            inputTokens = chunk.usage.prompt_tokens
+            outputTokens = chunk.usage.completion_tokens
+          }
+
+          const delta = chunk.choices?.[0]?.delta
+          if (delta?.content) {
+            fullText += delta.content
+            params.onText?.(delta.content)
+          }
+          if (delta?.tool_calls) {
+            for (const tc of delta.tool_calls) {
+              if (!toolCallBuffers.has(tc.index)) {
+                toolCallBuffers.set(tc.index, { id: tc.id || '', name: tc.function?.name || '', args: '' })
+              }
+              const buf = toolCallBuffers.get(tc.index)!
+              if (tc.id) buf.id = tc.id
+              if (tc.function?.name) buf.name = tc.function.name
+              if (tc.function?.arguments) buf.args += tc.function.arguments
+            }
+          }
+        } catch { /* skip malformed SSE chunks */ }
+      }
+    }
+
+    if (fullText) content.push({ type: 'text', text: fullText })
+    for (const [, tc] of toolCallBuffers) {
+      try {
+        content.push({ type: 'tool_use', id: tc.id, name: tc.name, input: JSON.parse(tc.args || '{}') })
+      } catch {
+        content.push({ type: 'tool_use', id: tc.id, name: tc.name, input: {} })
+      }
+    }
+
+    return { content, usage: { input_tokens: inputTokens, output_tokens: outputTokens } }
+  }
+
+  // Non-streaming mode
   const data = await res.json() as {
     choices: Array<{
       message: { content?: string; tool_calls?: Array<{ id: string; function: { name: string; arguments: string } }> }

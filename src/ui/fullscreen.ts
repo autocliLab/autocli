@@ -59,14 +59,15 @@ export class FullscreenLayout {
   }
 
   private computeMetrics(): LayoutMetrics {
-    const rows = process.stdout.rows || 24
+    const rows = Math.max(process.stdout.rows || 24, 6) // minimum 6 rows to avoid negative scroll regions
     const cols = process.stdout.columns || 80
     const n = this.currentInputLines
+    const scrollBottom = Math.max(1, rows - 2 - n)  // never go below row 1
     return {
       rows,
       cols,
       scrollTop: 1,
-      scrollBottom: rows - 2 - n,       // shrinks as input grows
+      scrollBottom,
       statusRow: rows - 1 - n,
       separatorRow: rows - n,
       inputRow: rows - n + 1,            // first input row
@@ -275,6 +276,11 @@ export class FullscreenLayout {
     if (!this.entered) {
       // Fallback: inline spinner when not in fullscreen
       process.stdout.write(hideCursor)
+    }
+
+    // Clear any lingering timer to prevent leaks
+    if (this.spinnerTimer) {
+      clearInterval(this.spinnerTimer)
     }
 
     this.spinnerTimer = setInterval(() => {

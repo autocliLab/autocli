@@ -6,9 +6,16 @@ import { jaccardSimilarity, recencyScore } from './utils.js'
 
 export class BrainReader {
   private baseDir: string
+  private indexCache: { data: BrainIndex; loadedAt: number } | null = null
+  private static INDEX_TTL_MS = 5_000 // cache index for 5 seconds
 
   constructor(baseDir: string) {
     this.baseDir = baseDir
+  }
+
+  /** Invalidate the cached index (call after writes) */
+  invalidateCache(): void {
+    this.indexCache = null
   }
 
   // Ranked recall: find most relevant notes for a query
@@ -127,10 +134,16 @@ export class BrainReader {
   }
 
   private loadIndex(): BrainIndex {
+    // Return cached index if still fresh
+    if (this.indexCache && (Date.now() - this.indexCache.loadedAt) < BrainReader.INDEX_TTL_MS) {
+      return this.indexCache.data
+    }
     const indexPath = join(this.baseDir, '_index.json')
     if (!existsSync(indexPath)) return { notes: {}, backlinks: {}, tags: {} }
     try {
-      return JSON.parse(readFileSync(indexPath, 'utf-8'))
+      const data = JSON.parse(readFileSync(indexPath, 'utf-8'))
+      this.indexCache = { data, loadedAt: Date.now() }
+      return data
     } catch {
       return { notes: {}, backlinks: {}, tags: {} }
     }

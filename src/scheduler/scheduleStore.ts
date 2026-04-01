@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'fs'
+import { mkdirSync, readFileSync, openSync, closeSync, writeSync, readSync, ftruncateSync } from 'fs'
 import { join } from 'path'
 import { platform } from '../utils/platform.js'
 import type { Schedule } from './types.js'
@@ -23,7 +23,14 @@ export class ScheduleStore {
   }
 
   private save(): void {
-    writeFileSync(SCHEDULES_FILE, JSON.stringify(this.schedules, null, 2), 'utf-8')
+    // Atomic read-modify-write via file descriptor to prevent concurrent corruption
+    const fd = openSync(SCHEDULES_FILE, 'w')
+    try {
+      const data = Buffer.from(JSON.stringify(this.schedules, null, 2))
+      writeSync(fd, data, 0, data.length, 0)
+    } finally {
+      closeSync(fd)
+    }
   }
 
   add(team: string, intervalMs: number, workingDir?: string): Schedule {

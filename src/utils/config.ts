@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
+import { z } from 'zod'
 import { platform } from './platform.js'
 
 export interface AppConfig {
@@ -23,6 +24,31 @@ export interface AppConfig {
   licenseKey?: string
 }
 
+const configSchema = z.object({
+  apiKey: z.string().optional(),
+  model: z.string().default('claude-opus-4-6-20250616'),
+  maxTokens: z.number().int().positive().default(8192),
+  permissionMode: z.enum(['default', 'auto-approve', 'deny-all']).default('default'),
+  hooks: z.array(z.object({
+    event: z.string(),
+    command: z.string(),
+    pattern: z.string().optional(),
+  })).default([]),
+  remotePort: z.number().int().positive().default(3456),
+  remoteSecret: z.string().optional(),
+  maxSessionCost: z.number().positive().default(5.00),
+  provider: z.enum(['anthropic', 'openai', 'claude-local', 'minimaxi-cn']).default('anthropic'),
+  openaiApiKey: z.string().optional(),
+  openaiBaseUrl: z.string().url().optional(),
+  claudeLocalCommand: z.string().optional(),
+  claudeLocalArgs: z.array(z.string()).optional(),
+  claudeLocalModel: z.string().optional(),
+  minimaxiApiKey: z.string().optional(),
+  minimaxiBaseUrl: z.string().url().optional(),
+  minimaxiModel: z.string().optional(),
+  licenseKey: z.string().optional(),
+}).passthrough()
+
 const DEFAULT_CONFIG: AppConfig = {
   model: 'claude-opus-4-6-20250616',
   maxTokens: 8192,
@@ -38,7 +64,14 @@ export function loadConfig(): AppConfig {
   if (!existsSync(configPath)) return { ...DEFAULT_CONFIG }
   try {
     const raw = readFileSync(configPath, 'utf-8')
-    return { ...DEFAULT_CONFIG, ...JSON.parse(raw) }
+    const parsed = JSON.parse(raw)
+    const result = configSchema.safeParse(parsed)
+    if (result.success) {
+      return { ...DEFAULT_CONFIG, ...result.data } as AppConfig
+    }
+    // Log validation errors but fall back to lenient merge
+    console.error(`Config validation warnings: ${result.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join(', ')}`)
+    return { ...DEFAULT_CONFIG, ...parsed }
   } catch {
     return { ...DEFAULT_CONFIG }
   }

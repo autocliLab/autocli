@@ -46,7 +46,7 @@ export function handleVimKey(state: VimState, key: string): { state: VimState; a
       s.cursor = Math.max(0, s.cursor - 1)
       return { state: s, action: 'none' }
     case 'l': // Move right
-      s.cursor = Math.min(Math.max(0, s.buffer.length - 1), s.cursor + 1)
+      s.cursor = s.buffer.length > 0 ? Math.min(s.buffer.length - 1, s.cursor + 1) : 0
       return { state: s, action: 'none' }
     case '0': // Start of line
       s.cursor = 0

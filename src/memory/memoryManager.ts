@@ -5,11 +5,17 @@ import type { MemoryEntry, MemoryType } from './types.js'
 export class MemoryManager {
   private dir: string
   private indexPath: string
+  private entriesCache: { entries: MemoryEntry[]; loadedAt: number } | null = null
+  private static CACHE_TTL_MS = 5_000 // 5 second cache
 
   constructor(dir: string) {
     this.dir = dir
     this.indexPath = join(dir, 'MEMORY.md')
     mkdirSync(dir, { recursive: true })
+  }
+
+  private invalidateCache(): void {
+    this.entriesCache = null
   }
 
   save(entry: MemoryEntry): void {
@@ -28,6 +34,7 @@ export class MemoryManager {
 
     writeFileSync(filePath, content)
     entry.filePath = filePath
+    this.invalidateCache()
     this.updateIndex()
   }
 
@@ -41,9 +48,14 @@ export class MemoryManager {
   }
 
   list(): MemoryEntry[] {
-    return this.listFiles()
+    if (this.entriesCache && (Date.now() - this.entriesCache.loadedAt) < MemoryManager.CACHE_TTL_MS) {
+      return this.entriesCache.entries
+    }
+    const entries = this.listFiles()
       .map(f => this.parseFile(f))
       .filter((e): e is MemoryEntry => e !== undefined)
+    this.entriesCache = { entries, loadedAt: Date.now() }
+    return entries
   }
 
   search(keyword: string): MemoryEntry[] {
@@ -61,6 +73,7 @@ export class MemoryManager {
       const entry = this.parseFile(file)
       if (entry && entry.name === name) {
         unlinkSync(file)
+        this.invalidateCache()
         this.updateIndex()
         return
       }

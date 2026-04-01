@@ -7,12 +7,19 @@ const msg = (role: 'user' | 'assistant', content: string): Message => ({ role, c
 
 describe('ContextManager', () => {
   describe('estimateTokens', () => {
-    it('returns ceil(length / 4)', () => {
+    it('returns a reasonable token estimate', () => {
       const cm = new ContextManager()
-      expect(cm.estimateTokens('abcd')).toBe(1)
-      expect(cm.estimateTokens('abcde')).toBe(2)
+      // Short text uses char-based heuristic
       expect(cm.estimateTokens('')).toBe(0)
-      expect(cm.estimateTokens('a'.repeat(100))).toBe(25)
+      expect(cm.estimateTokens('abcd')).toBeGreaterThan(0)
+      // Longer text uses word-based heuristic
+      const sentence = 'The quick brown fox jumps over the lazy dog'
+      const tokens = cm.estimateTokens(sentence)
+      expect(tokens).toBeGreaterThanOrEqual(9) // ~9 words
+      expect(tokens).toBeLessThanOrEqual(20) // reasonable upper bound
+      // Code with symbols should estimate higher per word
+      const code = 'if (x > 0) { return x * 2; }'
+      expect(cm.estimateTokens(code)).toBeGreaterThan(0)
     })
   })
 

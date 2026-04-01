@@ -67,6 +67,18 @@ describe('vim mode', () => {
     expect(state.cursor).toBe(3)
   })
 
+  test('l with empty buffer stays at 0', () => {
+    const s: VimState = { mode: 'normal', buffer: '', cursor: 0, register: '' }
+    const { state } = handleVimKey(s, 'l')
+    expect(state.cursor).toBe(0)
+  })
+
+  test('l with single char buffer stays at 0', () => {
+    const s: VimState = { mode: 'normal', buffer: 'a', cursor: 0, register: '' }
+    const { state } = handleVimKey(s, 'l')
+    expect(state.cursor).toBe(0)
+  })
+
   test('0 moves to start of line', () => {
     const s: VimState = { mode: 'normal', buffer: 'hello', cursor: 4, register: '' }
     const { state } = handleVimKey(s, '0')
