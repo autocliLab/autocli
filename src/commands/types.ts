@@ -10,6 +10,7 @@ export type CommandResult =
   | { type: 'rewind'; turns: number }
   | { type: 'vim_toggle' }
   | { type: 'team_status' }
+  | { type: 'run_team'; team: string; workingDir: string }
 
 export interface CommandDefinition {
   name: string
