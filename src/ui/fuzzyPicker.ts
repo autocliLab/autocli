@@ -87,6 +87,10 @@ export async function showFuzzyPicker(items: PickerItem[], prompt = 'Search: '):
 
         if (key === '\r' || key === '\n') { // Enter
           cleanup()
+          if (filtered.length === 0) {
+            resolve(null)
+            return
+          }
           resolve(filtered[selectedIdx]?.value || null)
           return
         }
@@ -98,7 +102,7 @@ export async function showFuzzyPicker(items: PickerItem[], prompt = 'Search: '):
         }
 
         if (key === '\x1b[B') { // Down arrow
-          selectedIdx = Math.min(filtered.length - 1, selectedIdx + 1)
+          selectedIdx = Math.min(Math.max(0, filtered.length - 1), selectedIdx + 1)
           filtered = render()
           return
         }

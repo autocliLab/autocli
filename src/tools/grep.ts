@@ -26,6 +26,7 @@ export const grepTool: ToolDefinition = {
       if (include_line_numbers !== false) args.push('-n')
       if (fileGlob) args.push('--glob', fileGlob)
       args.push('--max-count', '200')
+      args.push('--max-filesize', '1M')
       args.push(pattern, searchPath)
 
       const proc = Bun.spawn(args, {
@@ -65,8 +66,13 @@ async function builtinGrep(
     const stdout = await new Response(proc.stdout).text()
     await proc.exited
 
-    if (!stdout.trim()) return { output: 'No matches found.' }
-    return { output: stdout.trim() }
+    const MAX_OUTPUT = 100_000 // 100KB
+    let output = stdout.trim()
+    if (!output) return { output: 'No matches found.' }
+    if (output.length > MAX_OUTPUT) {
+      output = output.slice(0, MAX_OUTPUT) + '\n\n[Output truncated: exceeded 100KB limit]'
+    }
+    return { output }
   } catch (err) {
     return { output: `Error: ${(err as Error).message}`, isError: true }
   }

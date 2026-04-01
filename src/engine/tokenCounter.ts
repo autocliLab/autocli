@@ -2,6 +2,10 @@ const MODEL_PRICING: Record<string, { input: number; output: number }> = {
   'claude-sonnet-4-20250514': { input: 3, output: 15 },
   'claude-opus-4-20250514': { input: 15, output: 75 },
   'claude-haiku-3-5-20241022': { input: 0.8, output: 4 },
+  'claude-opus-4-6-20250616': { input: 15, output: 75 },
+  'claude-sonnet-4-6-20250616': { input: 3, output: 15 },
+  'claude-haiku-4-5-20251001': { input: 0.8, output: 4 },
+  'miniMax-2.7': { input: 1, output: 3 },
 }
 
 const DEFAULT_PRICING = { input: 3, output: 15 }

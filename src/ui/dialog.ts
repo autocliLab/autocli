@@ -7,12 +7,12 @@ export interface DialogOption {
 }
 
 export async function showDialog(title: string, message: string, options: DialogOption[]): Promise<string> {
-  const width = Math.min(60, process.stdout.columns || 80)
+  const width = Math.max(20, Math.min(60, process.stdout.columns || 80))
   const border = '─'.repeat(width - 2)
 
   console.log()
   console.log(theme.bold(`╭${border}╮`))
-  console.log(theme.bold(`│ ${title.padEnd(width - 3)}│`))
+  console.log(theme.bold(`│ ${title.padEnd(Math.max(0, width - 3))}│`))
   console.log(theme.bold(`├${border}┤`))
 
   // Word-wrap message
@@ -20,18 +20,18 @@ export async function showDialog(title: string, message: string, options: Dialog
   let line = ''
   for (const word of words) {
     if ((line + ' ' + word).length > width - 4) {
-      console.log(`│ ${line.padEnd(width - 3)}│`)
+      console.log(`│ ${line.padEnd(Math.max(0, width - 3))}│`)
       line = word
     } else {
       line = line ? line + ' ' + word : word
     }
   }
-  if (line) console.log(`│ ${line.padEnd(width - 3)}│`)
+  if (line) console.log(`│ ${line.padEnd(Math.max(0, width - 3))}│`)
 
   console.log(`│${' '.repeat(width - 2)}│`)
 
   for (const opt of options) {
-    console.log(`│  ${theme.info(`[${opt.key}]`)} ${opt.label.padEnd(width - 8)}│`)
+    console.log(`│  ${theme.info(`[${opt.key}]`)} ${opt.label.padEnd(Math.max(0, width - 8))}│`)
   }
 
   console.log(theme.bold(`╰${border}╯`))
@@ -50,13 +50,13 @@ export async function showConfirm(title: string, message: string): Promise<boole
 }
 
 export async function showAlert(title: string, message: string): Promise<void> {
-  const width = Math.min(60, process.stdout.columns || 80)
+  const width = Math.max(20, Math.min(60, process.stdout.columns || 80))
   const border = '─'.repeat(width - 2)
   console.log()
   console.log(theme.bold(`╭${border}╮`))
-  console.log(theme.bold(`│ ${title.padEnd(width - 3)}│`))
+  console.log(theme.bold(`│ ${title.padEnd(Math.max(0, width - 3))}│`))
   console.log(theme.bold(`├${border}┤`))
-  console.log(`│ ${message.slice(0, width - 3).padEnd(width - 3)}│`)
+  console.log(`│ ${message.slice(0, width - 3).padEnd(Math.max(0, width - 3))}│`)
   console.log(theme.bold(`╰${border}╯`))
   await readSingleLine(theme.dim('  Press Enter to continue...'))
 }
