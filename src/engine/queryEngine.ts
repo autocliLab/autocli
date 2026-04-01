@@ -60,6 +60,7 @@ export interface QueryEngineConfig {
   claudeMdPrompt?: string
   gitContext?: string
   projectHint?: string
+  brainContext?: string
   onText?: (text: string) => void
   onToolUse?: (name: string, input: Record<string, unknown>) => void
   onToolResult?: (name: string, result: ToolResult) => void
@@ -126,6 +127,7 @@ export class QueryEngine {
       this.config.claudeMdPrompt || '',
       this.config.gitContext || '',
       this.config.projectHint || '',
+      this.config.brainContext || '',
     ].filter(Boolean).join('\n\n')
   }
 
@@ -336,7 +338,13 @@ export class QueryEngine {
             continue
           }
 
-          if (!this.config.headless) spinner.start()
+          // Dynamic spinner verb
+          if (!this.config.headless) {
+            const hint = toolInput.file_path || toolInput.command || toolInput.pattern || toolInput.prompt || ''
+            const hintStr = typeof hint === 'string' ? hint.slice(0, 50) : ''
+            spinner.update(`${toolName} ${hintStr}...`.trim())
+            spinner.start()
+          }
           let result: ToolResult
           try {
             result = await tool.call(toolInput, toolContext)

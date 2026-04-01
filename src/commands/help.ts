@@ -29,6 +29,9 @@ export const helpCommand: CommandDefinition = {
       '  /rewind [n]  Undo last N conversation turns (alias: /undo)',
       '  /copy        Copy last assistant response to clipboard',
       '  /vim         Toggle vim keybinding mode',
+      '  /team        Show team status and worker progress',
+      '  /brain [cmd]  Second Brain (stats, search, show, distill)',
+      '  /search <q>  Search conversation transcript (aliases: /find, /grep)',
       '',
       theme.dim('Type a message to chat, or /command to run a command.'),
     ].join('\n')

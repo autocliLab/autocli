@@ -2,15 +2,54 @@ import chalk from 'chalk'
 import { highlightCode } from './syntaxHighlight.js'
 import { theme } from './theme.js'
 
+function renderTable(rows: string[][]): string {
+  if (rows.length === 0) return ''
+
+  // Calculate column widths
+  const colCount = Math.max(...rows.map(r => r.length))
+  const widths: number[] = Array(colCount).fill(0)
+  for (const row of rows) {
+    for (let i = 0; i < row.length; i++) {
+      widths[i] = Math.max(widths[i], (row[i] || '').length)
+    }
+  }
+
+  const lines: string[] = []
+  const separator = widths.map(w => '─'.repeat(w + 2)).join('┼')
+
+  for (let r = 0; r < rows.length; r++) {
+    const cells = rows[r].map((cell, i) => ` ${(cell || '').padEnd(widths[i])} `)
+    const rowStr = cells.join('│')
+
+    if (r === 0) {
+      // Header row
+      lines.push(chalk.bold(rowStr))
+      lines.push(chalk.dim(separator))
+    } else {
+      lines.push(rowStr)
+    }
+  }
+
+  return lines.join('\n')
+}
+
 export function renderMarkdown(text: string): string {
   const lines = text.split('\n')
   const result: string[] = []
   let inCodeBlock = false
   let codeBlockLang = ''
   let codeLines: string[] = []
+  let inTable = false
+  let tableRows: string[][] = []
 
   for (const line of lines) {
     if (line.startsWith('```') && !inCodeBlock) {
+      // Flush any pending table
+      if (inTable && tableRows.length > 0) {
+        result.push(renderTable(tableRows))
+        inTable = false
+        tableRows = []
+      }
       inCodeBlock = true
       codeBlockLang = line.slice(3).trim()
       codeLines = []
@@ -20,11 +59,11 @@ export function renderMarkdown(text: string): string {
     if (line.startsWith('```') && inCodeBlock) {
       inCodeBlock = false
       const highlighted = highlightCode(codeLines.join('\n'), codeBlockLang)
-      result.push(theme.dim('┌─' + (codeBlockLang ? ` ${codeBlockLang} ` : '') + '─'))
+      result.push(theme.dim('╭─' + (codeBlockLang ? `─ ${codeBlockLang} ` : '') + '─'.repeat(Math.max(0, 40 - (codeBlockLang?.length || 0))) + '╮'))
       for (const cl of highlighted.split('\n')) {
         result.push(theme.dim('│ ') + cl)
       }
-      result.push(theme.dim('└─'))
+      result.push(theme.dim('╰' + '─'.repeat(42) + '╯'))
       continue
     }
 
@@ -33,7 +72,32 @@ export function renderMarkdown(text: string): string {
       continue
     }
 
+    // Table detection
+    if (line.includes('|') && line.trim().startsWith('|')) {
+      if (!inTable) {
+        inTable = true
+        tableRows = []
+      }
+      // Skip separator rows like |---|---|
+      if (line.replace(/[|\-\s:]/g, '') === '') {
+        continue
+      }
+      const cells = line.split('|').slice(1, -1).map(c => c.trim())
+      tableRows.push(cells)
+      continue
+    } else if (inTable) {
+      // End of table — render it
+      inTable = false
+      result.push(renderTable(tableRows))
+      tableRows = []
+    }
+
     result.push(renderInline(line))
+  }
+
+  // Flush any pending table at end of text
+  if (inTable && tableRows.length > 0) {
+    result.push(renderTable(tableRows))
   }
 
   return result.join('\n')

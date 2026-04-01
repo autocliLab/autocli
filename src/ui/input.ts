@@ -1,4 +1,6 @@
 import * as readline from 'readline'
+import { readdirSync, existsSync, statSync } from 'fs'
+import { dirname, basename, join } from 'path'
 import { theme } from './theme.js'
 
 export async function readInput(prompt = '> ', history?: string[]): Promise<string> {
@@ -59,8 +61,41 @@ export async function readSingleLine(prompt: string): Promise<string> {
   })
 }
 
+export function completePath(partial: string, cwd: string): string[] {
+  if (!partial) return []
+
+  // Resolve the path
+  const fullPartial = partial.startsWith('/') ? partial : join(cwd, partial)
+  const dir = partial.endsWith('/') ? fullPartial : dirname(fullPartial)
+  const prefix = partial.endsWith('/') ? '' : basename(fullPartial)
+
+  if (!existsSync(dir)) return []
+
+  try {
+    const entries = readdirSync(dir)
+    const matches = entries
+      .filter(e => e.startsWith(prefix) && !e.startsWith('.'))
+      .slice(0, 20)
+      .map(e => {
+        const full = join(dir, e)
+        const isDir = statSync(full).isDirectory()
+        // Return path relative to what user typed
+        const dirPart = partial.endsWith('/') ? partial : partial.slice(0, partial.length - prefix.length)
+        return dirPart + e + (isDir ? '/' : '')
+      })
+    return matches
+  } catch {
+    return []
+  }
+}
+
 export function completeCommand(input: string, commands: string[]): string {
-  if (!input.startsWith('/')) return input
+  if (!input.startsWith('/')) {
+    // Try path completion for non-command input
+    const matches = completePath(input, process.cwd())
+    if (matches.length === 1) return matches[0]
+    return input
+  }
 
   const prefix = input.slice(1)
   const matches = commands.filter(c => c.startsWith(prefix))

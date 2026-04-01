@@ -31,6 +31,8 @@ import { contextCommand } from './commands/context.js'
 import { doctorCommand } from './commands/doctor.js'
 import { rewindCommand } from './commands/rewind.js'
 import { copyCommand } from './commands/copy.js'
+import { TeamManager } from './team/teamManager.js'
+import { teamCommand } from './commands/team.js'
 import type { Message, CommandResult } from './commands/types.js'
 import type { HookEvent } from './hooks/types.js'
 import { join } from 'path'
@@ -43,6 +45,9 @@ import { tasksCommand } from './commands/tasks.js'
 import { skillsCommand } from './commands/skills.js'
 import { activateCommand } from './commands/activate.js'
 import { vimCommand } from './commands/vim.js'
+import { brainCommand } from './commands/brain.js'
+import { searchCommand } from './commands/search.js'
+import { BrainReader } from './brain/reader.js'
 import { InputHistory } from './ui/history.js'
 import { checkForUpdate, showUpdateNotice } from './utils/updater.js'
 
@@ -80,8 +85,9 @@ export async function startRepl(options: {
   // Initialize subsystems
   const skillLoader = new SkillLoader([join(platform.configDir, 'skills')])
   const taskStore = new TaskStore(join(platform.configDir, 'tasks'))
+  const teamManager = new TeamManager()
   const toolRegistry = new ToolRegistry()
-  registerAllTools(toolRegistry, skillLoader, taskStore)
+  registerAllTools(toolRegistry, skillLoader, taskStore, teamManager)
 
   const tokenCounter = new TokenCounter(resolvedModel)
   const contextManager = new ContextManager()
@@ -115,6 +121,11 @@ export async function startRepl(options: {
   commandRegistry.register(rewindCommand)
   commandRegistry.register(copyCommand)
   commandRegistry.register(vimCommand)
+  commandRegistry.register(teamCommand)
+  commandRegistry.register(brainCommand)
+  commandRegistry.register(searchCommand)
+
+  const brainReader = new BrainReader(join(platform.configDir, 'brain'))
 
   const skillsList = skillLoader.list()
   const skillsPrompt = skillsList.length > 0
@@ -286,6 +297,23 @@ export async function startRepl(options: {
 
       // Handle typed or string command results
       if (typeof result === 'string') {
+        if (result === '__TEAM_STATUS__') {
+          const activeTeam = teamManager.getActiveTeam()
+          if (!activeTeam) {
+            console.log(theme.dim('No active team. Use the TeamCreate tool to create one.'))
+          } else {
+            const lines = [theme.bold(`Team: ${activeTeam.name} [${activeTeam.status}]`), `Goal: ${activeTeam.goal}`, '']
+            for (const w of activeTeam.workers) {
+              const icon = w.status === 'completed' ? theme.success('✓') : w.status === 'failed' ? theme.error('✗') : w.status === 'running' ? theme.info('▶') : theme.dim('○')
+              const elapsed = w.startedAt ? ` ${Math.round(((w.completedAt || Date.now()) - w.startedAt) / 1000)}s` : ''
+              lines.push(`  ${icon} ${w.name} [${w.status}]${elapsed}`)
+              if (w.result) lines.push(theme.dim(`    ${w.result.slice(0, 120)}...`))
+              if (w.error) lines.push(theme.error(`    ${w.error.slice(0, 120)}`))
+            }
+            console.log(lines.join('\n'))
+          }
+          continue
+        }
         console.log(result)
         continue
       }
@@ -375,8 +403,24 @@ export async function startRepl(options: {
       messages.push({ role: 'user', content: notifText })
     }
 
+    // Check for team worker completions
+    const teamNotifs = teamManager.getPendingNotifications()
+    for (const { team, worker } of teamNotifs) {
+      const notifText = worker.status === 'completed'
+        ? `[Team "${team.name}" — worker "${worker.name}" completed]\n\nResult:\n${worker.result?.slice(0, 2000)}`
+        : `[Team "${team.name}" — worker "${worker.name}" failed: ${worker.error}]`
+      console.log(theme.info(notifText))
+      messages.push({ role: 'user', content: notifText })
+    }
+
     // Run hooks
     await hookRunner.run('before_response', { input })
+
+    // Update brain context for this query
+    const lastUserMsg = messages[messages.length - 1]
+    if (lastUserMsg && typeof lastUserMsg.content === 'string') {
+      engine['config'].brainContext = brainReader.buildPromptSection(lastUserMsg.content)
+    }
 
     // Query LLM
     const startTime = Date.now()
