@@ -56,7 +56,7 @@ const DEFAULT_CONFIG: AppConfig = {
   hooks: [],
   remotePort: 3456,
   maxSessionCost: 5.00,
-  provider: 'anthropic',
+  provider: 'claude-local',
 }
 
 export function loadConfig(): AppConfig {

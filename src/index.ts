@@ -79,7 +79,8 @@ ${theme.bold('Options:')}
       console.log(theme.warning('No enabled schedules found.'))
       process.exit(0)
     }
-    const scheduler = new Scheduler(scheduleStore, agentStore, async () => {})
+    const runTeam = await buildRunTeamFn(agentStore, flags.model as string | undefined, flags.provider as string | undefined)
+    const scheduler = new Scheduler(scheduleStore, agentStore, runTeam)
     scheduler.start()
     console.log(theme.info(`Scheduler daemon started with ${active.length} schedule(s). Press Ctrl+C to stop.`))
     await new Promise(() => {}) // block forever
@@ -95,9 +96,17 @@ ${theme.bold('Options:')}
       process.exit(1)
     }
     console.log(theme.info(`Running team "${template.name}"...`))
-    // For now, just report — full execution requires engine setup
     console.log(theme.dim(`Goal: ${template.goal}`))
     console.log(theme.dim(`Agents: ${template.agents.map(a => a.agentName).join(', ')}`))
+    const runTeam = await buildRunTeamFn(agentStore, flags.model as string | undefined, flags.provider as string | undefined)
+    const wd = template.workingDir || process.cwd()
+    try {
+      await runTeam(template, wd)
+      console.log(theme.success(`Team "${template.name}" completed.`))
+    } catch (err) {
+      console.error(theme.error(`Team "${template.name}" failed: ${(err as Error).message}`))
+      process.exit(1)
+    }
     process.exit(0)
   }
 
@@ -133,6 +142,89 @@ ${theme.bold('Options:')}
     model: flags.model as string | undefined,
     provider: flags.provider as string | undefined,
   })
+}
+
+async function buildRunTeamFn(
+  agentStore: import('./agents/agentStore.js').AgentStore,
+  modelFlag?: string,
+  providerFlag?: string,
+): Promise<(template: import('./agents/types.js').TeamTemplate, workingDir: string) => Promise<void>> {
+  const { loadConfig, getApiKey, resolveModel, resolveProvider } = await import('./utils/config.js')
+  const { ToolRegistry } = await import('./tools/registry.js')
+  const { TokenCounter } = await import('./engine/tokenCounter.js')
+  const { ContextManager } = await import('./engine/contextManager.js')
+  const { QueryEngine, runSubAgent } = await import('./engine/queryEngine.js')
+  const { registerAllTools } = await import('./tools/registerAll.js')
+  const { setGlobalEngine } = await import('./repl.js')
+  const { buildGitContext, buildProjectHint } = await import('./git/gitContext.js')
+
+  const config = loadConfig()
+  const provider = resolveProvider(providerFlag, config.provider)
+  const apiKey = getApiKey()
+  const resolvedModel = modelFlag ? resolveModel(modelFlag, config.model) : config.model
+
+  const toolRegistry = new ToolRegistry()
+  registerAllTools(toolRegistry)
+
+  const tokenCounter = new TokenCounter(resolvedModel)
+  const contextManager = new ContextManager()
+
+  const engine = new QueryEngine({
+    apiKey,
+    model: resolvedModel,
+    toolRegistry,
+    tokenCounter,
+    contextManager,
+    permissionConfig: { mode: config.permissionMode, rules: [], alwaysAllow: new Set() },
+    provider,
+    openaiApiKey: config.openaiApiKey,
+    openaiBaseUrl: config.openaiBaseUrl,
+    claudeLocalConfig: provider === 'claude-local' ? {
+      command: config.claudeLocalCommand,
+      args: config.claudeLocalArgs,
+      claudeModel: config.claudeLocalModel,
+    } : undefined,
+    headless: true,
+  })
+  setGlobalEngine(engine)
+
+  return async (template, workingDir) => {
+    const gitContext = await buildGitContext(workingDir)
+    const projectHint = await buildProjectHint(workingDir)
+    engine.getConfigSnapshot() // ensure engine is ready
+
+    console.log(theme.dim(`[Team] Starting "${template.name}" with ${template.agents.length} agents in ${workingDir}`))
+
+    const results = await Promise.allSettled(
+      template.agents.map(async (a) => {
+        const def = agentStore.loadAgent(a.agentName)
+        const sysPrompt = def ? agentStore.buildSystemPrompt(def) : ''
+        const prompt = `${sysPrompt ? sysPrompt + '\n\n' : ''}Task: ${a.task}`
+
+        console.log(theme.dim(`[Agent] Starting "${a.agentName}"...`))
+
+        const result = await runSubAgent(
+          prompt,
+          a.agentName,
+          { workingDir, sharedState: {} },
+          { subagentType: def?.agentType || 'general-purpose', model: def?.model, permissionMode: 'auto-approve' },
+        )
+
+        console.log(theme.success(`[Agent] "${a.agentName}" completed (${result.length} chars)`))
+        return { agent: a.agentName, result }
+      })
+    )
+
+    const failed = results.filter(r => r.status === 'rejected')
+    if (failed.length > 0) {
+      for (const f of failed) {
+        console.error(theme.error(`[Agent] Failed: ${(f as PromiseRejectedResult).reason}`))
+      }
+    }
+
+    console.log(theme.dim(`[Team] "${template.name}" finished: ${results.filter(r => r.status === 'fulfilled').length} succeeded, ${failed.length} failed`))
+    console.log(theme.dim(tokenCounter.formatUsage()))
+  }
 }
 
 async function runOneShot(prompt: string, workingDir: string, modelFlag?: string, providerFlag?: string): Promise<void> {

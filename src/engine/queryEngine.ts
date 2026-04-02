@@ -663,6 +663,7 @@ export interface SubAgentOptions {
   model?: string
   provider?: 'anthropic' | 'openai' | 'claude-local'
   runInBackground?: boolean
+  permissionMode?: 'default' | 'auto-approve' | 'deny-all'
 }
 
 function buildSubEngine(
@@ -671,6 +672,7 @@ function buildSubEngine(
   parentRegistry: ToolRegistry,
   modelOverride?: string,
   providerOverride?: 'anthropic' | 'openai' | 'claude-local',
+  permissionModeOverride?: 'default' | 'auto-approve' | 'deny-all',
 ): QueryEngine {
   const subRegistry = new ToolRegistry()
 
@@ -697,6 +699,10 @@ function buildSubEngine(
     || agentType?.provider
     || parentConfig.provider
 
+  const permissionConfig = permissionModeOverride
+    ? { ...parentConfig.permissionConfig!, mode: permissionModeOverride }
+    : parentConfig.permissionConfig
+
   return new QueryEngine({
     ...parentConfig,
     model: resolvedModel,
@@ -704,6 +710,7 @@ function buildSubEngine(
     toolRegistry: subRegistry,
     systemPrompt: agentType?.systemPrompt,
     headless: true,
+    permissionConfig,
   })
 }
 
@@ -733,7 +740,7 @@ export async function runSubAgent(
       const agentType = options?.subagentType
         ? getAgentType(options.subagentType)
         : getAgentType('general-purpose')
-      const subEngine = buildSubEngine(engine, agentType, parentRegistry, options?.model, options?.provider)
+      const subEngine = buildSubEngine(engine, agentType, parentRegistry, options?.model, options?.provider, options?.permissionMode)
       ;(async () => {
         try {
           const msgs: Message[] = [{ role: 'user', content: prompt }]
@@ -756,7 +763,7 @@ export async function runSubAgent(
     : getAgentType('general-purpose')
 
   const parentRegistry = engine.getToolRegistry()
-  const subEngine = buildSubEngine(engine, agentType, parentRegistry, options?.model, options?.provider)
+  const subEngine = buildSubEngine(engine, agentType, parentRegistry, options?.model, options?.provider, options?.permissionMode)
 
   // Emit agent_start wire event
   const agentId = `agent-${Date.now()}`

@@ -316,7 +316,7 @@ export async function startRepl(options: {
               `${sysPrompt ? sysPrompt + '\n\n' : ''}Task: ${worker.task}`,
               worker.name,
               { workingDir: wd, sharedState: {} },
-              { subagentType: worker.agentType, model: worker.model },
+              { subagentType: worker.agentType, model: worker.model, permissionMode: 'auto-approve' },
             )
             teamManager.completeWorker(team.id, worker.id, result)
           } catch (err) {
@@ -332,8 +332,8 @@ export async function startRepl(options: {
   schedulerRef = scheduler
 
   if (scheduleStore.list().some(s => s.enabled)) {
-    scheduler.start()
-    layout.log(theme.dim(`Scheduler active (${scheduleStore.list().filter(s => s.enabled).length} schedules)`))
+    scheduler.start({ runAllOnStartup: true })
+    layout.log(theme.dim(`Scheduler active (${scheduleStore.list().filter(s => s.enabled).length} schedules) — running teams on startup`))
   }
 
   // Check for updates (non-blocking)

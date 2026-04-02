@@ -25,13 +25,43 @@ export class Scheduler {
   }
 
   /** Start the background scheduler loop (checks every 30s) */
-  start(): void {
+  start(options?: { runAllOnStartup?: boolean }): void {
     if (this.running) return
     this.running = true
     this.timer = setInterval(() => this.tick(), 30_000)
     this.exitHandler = () => this.stop()
     process.on('exit', this.exitHandler)
-    this.tick()
+    if (options?.runAllOnStartup) {
+      this.runAllEnabled()
+    } else {
+      this.tick()
+    }
+  }
+
+  /** Run all enabled scheduled teams immediately (regardless of nextRun) */
+  private async runAllEnabled(): Promise<void> {
+    const schedules = this.scheduleStore.list().filter(s => s.enabled)
+    for (const schedule of schedules) {
+      if (this.runningTeams.has(schedule.id)) continue
+      if (this.runningTeams.size >= this.maxConcurrent) continue
+
+      const template = this.agentStore.loadTeam(schedule.team)
+      if (!template) {
+        getLayout().log(theme.warning(`Schedule "${schedule.id}": team "${schedule.team}" not found, skipping.`))
+        continue
+      }
+
+      const workingDir = schedule.workingDir || template.workingDir || process.cwd()
+      getLayout().log(theme.info(`[Scheduler] Running team "${schedule.team}" on startup`))
+      this.scheduleStore.markRun(schedule.id)
+
+      this.runningTeams.add(schedule.id)
+      this.runTeamFn(template, workingDir).catch(err => {
+        getLayout().log(theme.error(`[Scheduler] Team "${schedule.team}" failed: ${(err as Error).message}`))
+      }).finally(() => {
+        this.runningTeams.delete(schedule.id)
+      })
+    }
   }
 
   stop(): void {
