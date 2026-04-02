@@ -148,7 +148,7 @@ async function buildRunTeamFn(
   agentStore: import('./agents/agentStore.js').AgentStore,
   modelFlag?: string,
   providerFlag?: string,
-): Promise<(template: import('./agents/types.js').TeamTemplate, workingDir: string) => Promise<void>> {
+): Promise<(template: import('./agents/types.js').TeamTemplate, workingDir: string, scheduleId?: string) => Promise<void>> {
   const { loadConfig, getApiKey, resolveModel, resolveProvider } = await import('./utils/config.js')
   const { ToolRegistry } = await import('./tools/registry.js')
   const { TokenCounter } = await import('./engine/tokenCounter.js')
@@ -157,6 +157,8 @@ async function buildRunTeamFn(
   const { registerAllTools } = await import('./tools/registerAll.js')
   const { setGlobalEngine } = await import('./repl.js')
   const { buildGitContext, buildProjectHint } = await import('./git/gitContext.js')
+  const { JobResultStore } = await import('./scheduler/jobResultStore.js')
+  const jobResultStore = new JobResultStore()
 
   const config = loadConfig()
   const provider = resolveProvider(providerFlag, config.provider)
@@ -188,7 +190,9 @@ async function buildRunTeamFn(
   })
   setGlobalEngine(engine)
 
-  return async (template, workingDir) => {
+  return async (template, workingDir, scheduleId) => {
+    const startedAt = Date.now()
+    const jobId = `job-${startedAt}`
     const gitContext = await buildGitContext(workingDir)
     const projectHint = await buildProjectHint(workingDir)
     engine.getConfigSnapshot() // ensure engine is ready
@@ -215,14 +219,29 @@ async function buildRunTeamFn(
       })
     )
 
-    const failed = results.filter(r => r.status === 'rejected')
+    const agentResults = results.map((r, i) => {
+      const name = template.agents[i].agentName
+      if (r.status === 'fulfilled') {
+        return { name, status: 'success' as const, result: r.value.result }
+      } else {
+        return { name, status: 'failed' as const, error: String(r.reason) }
+      }
+    })
+
+    const failed = agentResults.filter(r => r.status === 'failed')
     if (failed.length > 0) {
       for (const f of failed) {
-        console.error(theme.error(`[Agent] Failed: ${(f as PromiseRejectedResult).reason}`))
+        console.error(theme.error(`[Agent] Failed: ${f.error}`))
       }
     }
 
-    console.log(theme.dim(`[Team] "${template.name}" finished: ${results.filter(r => r.status === 'fulfilled').length} succeeded, ${failed.length} failed`))
+    const status = failed.length === 0 ? 'success' : failed.length === agentResults.length ? 'failed' : 'partial'
+    jobResultStore.save({
+      id: jobId, scheduleId: scheduleId || '', team: template.name,
+      startedAt, finishedAt: Date.now(), status, agents: agentResults,
+    })
+
+    console.log(theme.dim(`[Team] "${template.name}" finished — ${status} (results: ${jobId})`))
     console.log(theme.dim(tokenCounter.formatUsage()))
   }
 }

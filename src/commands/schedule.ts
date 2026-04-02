@@ -1,5 +1,6 @@
 import type { CommandDefinition, CommandResult } from './types.js'
 import { ScheduleStore, parseInterval, formatInterval } from '../scheduler/scheduleStore.js'
+import { JobResultStore } from '../scheduler/jobResultStore.js'
 import { AgentStore } from '../agents/agentStore.js'
 import { theme } from '../ui/theme.js'
 
@@ -91,10 +92,73 @@ export const scheduleCommand: CommandDefinition = {
         return { type: 'run_team', team: teamName, workingDir: ctx.workingDir }
       }
 
+      case 'results': {
+        const jobStore = new JobResultStore()
+        const filter = args[1] // optional: job id or schedule id
+        if (filter?.startsWith('job-')) {
+          const job = jobStore.get(filter)
+          if (!job) return theme.error(`Job not found: ${filter}`)
+          return formatJobDetail(job)
+        }
+        const results = filter
+          ? jobStore.getBySchedule(filter)
+          : jobStore.list()
+        if (results.length === 0) {
+          return theme.dim('No job results found.')
+        }
+        const lines: string[] = [theme.bold('Job Results:'), '']
+        for (const r of results) {
+          const icon = r.status === 'success' ? theme.success('✓')
+            : r.status === 'partial' ? theme.warning('◐')
+            : theme.error('✗')
+          const duration = formatInterval(r.finishedAt - r.startedAt)
+          const time = new Date(r.startedAt).toLocaleString()
+          lines.push(`  ${icon} ${theme.bold(r.id)} ${theme.dim(`[${r.team}]`)} ${r.status} ${theme.dim(`(${duration})`)}`)
+          lines.push(`      ${theme.dim(time)} — ${r.agents.length} agent(s)`)
+        }
+        lines.push('')
+        lines.push(theme.dim('View details: /schedule results <job-id>'))
+        return lines.join('\n')
+      }
+
       default:
         return theme.error(
-          `Unknown subcommand: ${subcommand}. Available: list, add, remove, enable, disable, run`
+          `Unknown subcommand: ${subcommand}. Available: list, add, remove, enable, disable, run, results`
         )
     }
   },
+}
+
+function formatJobDetail(job: import('../scheduler/jobResultStore.js').JobResult): string {
+  const lines: string[] = []
+  const statusIcon = job.status === 'success' ? theme.success('✓')
+    : job.status === 'partial' ? theme.warning('◐')
+    : theme.error('✗')
+  const duration = formatInterval(job.finishedAt - job.startedAt)
+
+  lines.push(theme.bold(`Job: ${job.id}`))
+  lines.push(`  Team:     ${job.team}`)
+  lines.push(`  Status:   ${statusIcon} ${job.status}`)
+  lines.push(`  Started:  ${new Date(job.startedAt).toLocaleString()}`)
+  lines.push(`  Duration: ${duration}`)
+  if (job.scheduleId) lines.push(`  Schedule: ${job.scheduleId}`)
+  lines.push('')
+  lines.push(theme.bold('  Agent Results:'))
+
+  for (const a of job.agents) {
+    const icon = a.status === 'success' ? theme.success('✓') : theme.error('✗')
+    lines.push(`    ${icon} ${theme.bold(a.name)}`)
+    if (a.error) {
+      lines.push(`      ${theme.error('Error: ' + a.error)}`)
+    }
+    if (a.result) {
+      // Show first 500 chars of result
+      const preview = a.result.length > 500 ? a.result.slice(0, 500) + '...' : a.result
+      for (const line of preview.split('\n')) {
+        lines.push(`      ${theme.dim(line)}`)
+      }
+    }
+  }
+
+  return lines.join('\n')
 }

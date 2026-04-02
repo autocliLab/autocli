@@ -9,7 +9,7 @@ export class Scheduler {
   private running = false
   private scheduleStore: ScheduleStore
   private agentStore: AgentStore
-  private runTeamFn: (template: TeamTemplate, workingDir: string) => Promise<void>
+  private runTeamFn: (template: TeamTemplate, workingDir: string, scheduleId?: string) => Promise<void>
   private runningTeams = new Set<string>()
   private maxConcurrent = 3
   private exitHandler: (() => void) | null = null
@@ -17,7 +17,7 @@ export class Scheduler {
   constructor(
     scheduleStore: ScheduleStore,
     agentStore: AgentStore,
-    runTeamFn: (template: TeamTemplate, workingDir: string) => Promise<void>,
+    runTeamFn: (template: TeamTemplate, workingDir: string, scheduleId?: string) => Promise<void>,
   ) {
     this.scheduleStore = scheduleStore
     this.agentStore = agentStore
@@ -56,7 +56,7 @@ export class Scheduler {
       this.scheduleStore.markRun(schedule.id)
 
       this.runningTeams.add(schedule.id)
-      this.runTeamFn(template, workingDir).catch(err => {
+      this.runTeamFn(template, workingDir, schedule.id).catch(err => {
         getLayout().log(theme.error(`[Scheduler] Team "${schedule.team}" failed: ${(err as Error).message}`))
       }).finally(() => {
         this.runningTeams.delete(schedule.id)
@@ -97,7 +97,7 @@ export class Scheduler {
 
       // Track in-flight and fire
       this.runningTeams.add(schedule.id)
-      this.runTeamFn(template, workingDir).catch(err => {
+      this.runTeamFn(template, workingDir, schedule.id).catch(err => {
         getLayout().log(theme.error(`[Scheduler] Team "${schedule.team}" failed: ${(err as Error).message}`))
       }).finally(() => {
         this.runningTeams.delete(schedule.id)

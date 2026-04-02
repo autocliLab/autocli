@@ -52,6 +52,7 @@ import { rcCommand } from './commands/rc.js'
 import { statusCommand } from './commands/status.js'
 import { ScheduleStore } from './scheduler/scheduleStore.js'
 import { Scheduler } from './scheduler/scheduler.js'
+import { JobResultStore } from './scheduler/jobResultStore.js'
 import { AgentStore } from './agents/agentStore.js'
 import { scheduleCommand } from './commands/schedule.js'
 import { deployCommand } from './commands/deploy.js'
@@ -296,7 +297,11 @@ export async function startRepl(options: {
   // Scheduler setup
   const agentStore = new AgentStore()
   const scheduleStore = new ScheduleStore()
-  const scheduler = new Scheduler(scheduleStore, agentStore, async (template, wd) => {
+  const jobResultStore = new JobResultStore()
+  const scheduler = new Scheduler(scheduleStore, agentStore, async (template, wd, scheduleId) => {
+    const startedAt = Date.now()
+    const jobId = `job-${startedAt}`
+    const agentResults: import('./scheduler/jobResultStore.js').AgentResult[] = []
     try {
       const workers = template.agents.map(a => {
         const def = agentStore.loadAgent(a.agentName)
@@ -305,11 +310,12 @@ export async function startRepl(options: {
       const team = teamManager.createTeam(template.name, template.goal, workers)
       layout.log(theme.info(`[Scheduler] Team "${template.name}" started (${team.workers.length} workers)`))
 
+      const workerPromises: Promise<void>[] = []
       for (const worker of team.workers) {
         teamManager.startWorker(team.id, worker.id)
         const def = agentStore.loadAgent(worker.name)
         const sysPrompt = def ? agentStore.buildSystemPrompt(def) : undefined
-        ;(async () => {
+        workerPromises.push((async () => {
           try {
             const { runSubAgent } = await import('./engine/queryEngine.js')
             const result = await runSubAgent(
@@ -319,13 +325,30 @@ export async function startRepl(options: {
               { subagentType: worker.agentType, model: worker.model, permissionMode: 'auto-approve' },
             )
             teamManager.completeWorker(team.id, worker.id, result)
+            agentResults.push({ name: worker.name, status: 'success', result })
           } catch (err) {
-            teamManager.failWorker(team.id, worker.id, (err as Error).message)
+            const msg = (err as Error).message
+            teamManager.failWorker(team.id, worker.id, msg)
+            agentResults.push({ name: worker.name, status: 'failed', error: msg })
           }
-        })()
+        })())
       }
+      await Promise.allSettled(workerPromises)
+
+      const failed = agentResults.filter(r => r.status === 'failed').length
+      const status = failed === 0 ? 'success' : failed === agentResults.length ? 'failed' : 'partial'
+      jobResultStore.save({
+        id: jobId, scheduleId: scheduleId || '', team: template.name,
+        startedAt, finishedAt: Date.now(), status, agents: agentResults,
+      })
+      layout.log(theme.info(`[Scheduler] Team "${template.name}" finished — ${status} (results: ${jobId})`))
     } catch (err) {
       layout.log(theme.error(`[Scheduler] Failed to start team "${template.name}": ${(err as Error).message}`))
+      jobResultStore.save({
+        id: jobId, scheduleId: scheduleId || '', team: template.name,
+        startedAt, finishedAt: Date.now(), status: 'failed',
+        agents: [{ name: template.name, status: 'failed', error: (err as Error).message }],
+      })
     }
   })
 
