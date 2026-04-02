@@ -1,4 +1,4 @@
-export type PermissionDecision = 'allow' | 'deny' | 'ask'
+export type PermissionDecision = 'allow' | 'deny' | 'ask' | 'llm-confirm'
 
 export interface PermissionRule {
   tool: string
@@ -7,7 +7,7 @@ export interface PermissionRule {
 }
 
 export interface PermissionConfig {
-  mode: 'default' | 'auto-approve' | 'deny-all'
+  mode: 'default' | 'auto-approve' | 'deny-all' | 'llm-confirm'
   rules: PermissionRule[]
   alwaysAllow: Set<string>
 }

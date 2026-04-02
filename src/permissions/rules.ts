@@ -31,6 +31,7 @@ export function evaluatePermission(
   if (isReadOnly) return 'allow'
   if (config.mode === 'auto-approve') return 'allow'
   if (config.mode === 'deny-all') return 'deny'
+  if (config.mode === 'llm-confirm') return 'llm-confirm'
   if (config.alwaysAllow.has(toolName)) return 'allow'
 
   for (const rule of config.rules) {

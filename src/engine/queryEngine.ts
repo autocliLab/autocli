@@ -124,6 +124,14 @@ export class QueryEngine {
     }
     this.client = new Anthropic({ apiKey: config.apiKey })
     this.permissionGate = new PermissionGate(this.config.permissionConfig)
+    // Wire up LLM confirmation config so llm-confirm mode can call a provider
+    this.permissionGate.setLlmConfirmConfig({
+      provider: config.provider || 'anthropic',
+      apiKey: config.apiKey,
+      claudeLocalConfig: config.claudeLocalConfig,
+      openaiApiKey: config.openaiApiKey,
+      openaiBaseUrl: config.openaiBaseUrl,
+    })
   }
 
   // ── Public accessors (avoids bracket-notation private access) ──
@@ -663,7 +671,7 @@ export interface SubAgentOptions {
   model?: string
   provider?: 'anthropic' | 'openai' | 'claude-local'
   runInBackground?: boolean
-  permissionMode?: 'default' | 'auto-approve' | 'deny-all'
+  permissionMode?: 'default' | 'auto-approve' | 'deny-all' | 'llm-confirm'
 }
 
 function buildSubEngine(
@@ -672,7 +680,7 @@ function buildSubEngine(
   parentRegistry: ToolRegistry,
   modelOverride?: string,
   providerOverride?: 'anthropic' | 'openai' | 'claude-local',
-  permissionModeOverride?: 'default' | 'auto-approve' | 'deny-all',
+  permissionModeOverride?: 'default' | 'auto-approve' | 'deny-all' | 'llm-confirm',
 ): QueryEngine {
   const subRegistry = new ToolRegistry()
 

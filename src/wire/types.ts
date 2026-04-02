@@ -10,3 +10,4 @@ export type WireEventType =
   | 'agent_start'
   | 'agent_done'
   | 'user_input'
+  | 'llm_confirm'

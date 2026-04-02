@@ -30,7 +30,7 @@ async function main() {
   const flags = parseArgs()
 
   if (flags.version) {
-    console.log('autocli v0.1.1')
+    console.log('autocli v0.1.2')
     process.exit(0)
   }
 
@@ -211,7 +211,7 @@ async function buildRunTeamFn(
           prompt,
           a.agentName,
           { workingDir, sharedState: {} },
-          { subagentType: def?.agentType || 'general-purpose', model: def?.model, permissionMode: 'auto-approve' },
+          { subagentType: def?.agentType || 'general-purpose', model: def?.model, permissionMode: 'llm-confirm' },
         )
 
         console.log(theme.success(`[Agent] "${a.agentName}" completed (${result.length} chars)`))

@@ -284,7 +284,7 @@ export async function startRepl(options: {
 
   layout.log('')
   layout.log(theme.bold('  ╭─────────────────────────╮'))
-  layout.log(theme.bold('  │') + theme.info('     autocli v0.1.1      ') + theme.bold('│'))
+  layout.log(theme.bold('  │') + theme.info('     autocli v0.1.2      ') + theme.bold('│'))
   layout.log(theme.bold('  ╰─────────────────────────╯'))
   layout.log('')
   layout.log(`  ${theme.dim('Model:')}   ${modelDisplayName(resolvedModel)}`)
@@ -322,7 +322,7 @@ export async function startRepl(options: {
               `${sysPrompt ? sysPrompt + '\n\n' : ''}Task: ${worker.task}`,
               worker.name,
               { workingDir: wd, sharedState: {} },
-              { subagentType: worker.agentType, model: worker.model, permissionMode: 'auto-approve' },
+              { subagentType: worker.agentType, model: worker.model, permissionMode: 'llm-confirm' },
             )
             teamManager.completeWorker(team.id, worker.id, result)
             agentResults.push({ name: worker.name, status: 'success', result })
