@@ -29,7 +29,7 @@ import { platform } from './utils/platform.js'
 import { Git } from './services/git/git.js'
 import { join } from 'path'
 
-const VERSION = '0.2.3'
+const VERSION = '0.2.4'
 
 export interface ReplDeps {
   engine: QueryEngine

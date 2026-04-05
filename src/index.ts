@@ -6,7 +6,7 @@ import { platform } from './utils/platform.js'
 import type { LLMProvider, Message } from './services/providers/types.js'
 import type { AgentResult } from './stores/jobResultStore.js'
 
-const VERSION = '0.2.3'
+const VERSION = '0.2.4'
 
 // Known subcommands — if argv[2] matches one of these, route to it
 const SUBCOMMANDS = new Set([
@@ -68,7 +68,7 @@ ${theme.bold('Options:')}
   -v, --version                 Show version
   -r, --resume [id]             Resume session (latest if no id)
   -m, --model <model>           Model (sonnet, opus, haiku, minimax)
-  --provider <name>             Provider (openai, claude-local, minimaxi-cn)
+  --provider <name>             Provider (openai, claude-local, minimaxi-cn, ollama)
   --set-key <key>               Save API key
   --yolo                        Auto-approve all tool calls
   --plan                        Read-only mode (no write tools)
@@ -158,8 +158,14 @@ async function main() {
 
   // ── Resolve model & provider ──
   const { resolveModel, resolveProvider, getApiKey } = await import('./utils/config.js')
-  const resolvedModel = flags.model ? resolveModel(flags.model as string) : config.model
-  const providerName = resolveProvider(resolvedModel, config)
+  const providerName = flags.provider
+    ? flags.provider as string
+    : flags.model ? resolveProvider(resolveModel(flags.model as string), config) : config.provider
+  const resolvedModel = flags.model
+    ? resolveModel(flags.model as string)
+    : providerName === 'ollama' ? config.ollamaModel
+    : providerName === 'minimaxi-cn' ? config.minimaxiModel
+    : config.model
   const apiKey = getApiKey(providerName, config)
 
   // ── Handle subcommands that don't need the engine ──
@@ -281,6 +287,7 @@ async function main() {
   const { OpenAIProvider } = await import('./services/providers/openai.js')
   const { MinimaXIProvider } = await import('./services/providers/minimaxi.js')
   const { ClaudeLocalBridge } = await import('./services/providers/claudeLocal.js')
+  const { OllamaProvider } = await import('./services/providers/ollama.js')
 
   let provider: LLMProvider
   switch (providerName) {
@@ -296,6 +303,12 @@ async function main() {
         command: config.claudeLocalCommand,
         args: config.claudeLocalArgs,
         model: resolvedModel,
+      })
+      break
+    case 'ollama':
+      provider = new OllamaProvider({
+        baseUrl: config.ollamaBaseUrl,
+        model: config.ollamaModel,
       })
       break
     default:
